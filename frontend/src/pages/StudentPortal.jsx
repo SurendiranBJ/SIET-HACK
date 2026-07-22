@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { Monitor, AlertTriangle, CheckCircle, FileEdit, Clock, Activity, Zap, Usb, ScreenShare, Cpu, Lock } from 'lucide-react';
+import ThemeToggle from '../components/ThemeToggle';
 
 const StudentPortal = () => {
   const navigate = useNavigate();
@@ -296,12 +297,15 @@ const StudentPortal = () => {
             </h1>
             <p className="text-white/40 mt-1">Logged in as <strong className="text-white">{user.username}</strong></p>
           </div>
-          <button
-            onClick={() => { localStorage.removeItem('siet_user'); navigate('/login'); }}
-            className="px-4 py-2 border border-white/10 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors text-sm"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+            <ThemeToggle inline />
+            <button
+              onClick={() => { localStorage.removeItem('siet_user'); navigate('/login'); }}
+              className="px-4 py-2 border border-white/10 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors text-sm"
+            >
+              Logout
+            </button>
+          </div>
         </header>
 
         {!isSharing ? (

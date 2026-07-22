@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import TeacherDashboard from './pages/TeacherDashboard';
 import StudentPortal from './pages/StudentPortal';
+import { ThemeProvider } from './components/ThemeContext';
 
 // Simulated Auth Context
 const getAuth = () => {
@@ -23,33 +24,35 @@ const PrivateRoute = ({ children, role }) => {
 
 function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-[#0F1115] text-white font-sans selection:bg-blue-500/30">
-        <Routes>
-          <Route path="/" element={<Navigate to="/login" />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          
-          <Route 
-            path="/teacher" 
-            element={
-              <PrivateRoute role="teacher">
-                <TeacherDashboard />
-              </PrivateRoute>
-            } 
-          />
-          
-          <Route 
-            path="/student" 
-            element={
-              <PrivateRoute role="student">
-                <StudentPortal />
-              </PrivateRoute>
-            } 
-          />
-        </Routes>
-      </div>
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <div className="min-h-screen bg-[#0F1115] text-white font-sans selection:bg-blue-500/30">
+          <Routes>
+            <Route path="/" element={<Navigate to="/login" />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            
+            <Route 
+              path="/teacher" 
+              element={
+                <PrivateRoute role="teacher">
+                  <TeacherDashboard />
+                </PrivateRoute>
+              } 
+            />
+            
+            <Route 
+              path="/student" 
+              element={
+                <PrivateRoute role="student">
+                  <StudentPortal />
+                </PrivateRoute>
+              } 
+            />
+          </Routes>
+        </div>
+      </Router>
+    </ThemeProvider>
   );
 }
 

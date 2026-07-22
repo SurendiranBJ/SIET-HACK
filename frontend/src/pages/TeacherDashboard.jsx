@@ -8,6 +8,7 @@ import ActivityHeatmap from '../components/ActivityHeatmap';
 import SmartClassroomMap from '../components/SmartClassroomMap';
 import AdminPanel from '../components/AdminPanel';
 import PrivacyDashboard from '../components/PrivacyDashboard';
+import ThemeToggle from '../components/ThemeToggle';
 
 const TeacherDashboard = () => {
   const [activeTab, setActiveTab] = useState('grid');
@@ -213,6 +214,7 @@ const TeacherDashboard = () => {
           </button>
           <div className="pl-3 border-l border-white/10 flex items-center gap-3">
             <span className="text-sm text-white/40">{user.username}</span>
+            <ThemeToggle inline />
             <button
               onClick={() => { localStorage.removeItem('siet_user'); navigate('/login'); }}
               className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-sm border border-red-500/20 transition-colors"

@@ -63,3 +63,133 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #3B82F6;
 }
+
+/* Light Mode Theme Overrides */
+html.light,
+html.light body,
+html.light #root {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+html.light .min-h-screen {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+html.light .bg-\[\#0F1115\],
+html.light .bg-\[\#090B0E\],
+html.light .bg-dark-bg {
+  background-color: #F8FAFC !important;
+}
+
+html.light header,
+html.light .bg-\[\#14171F\],
+html.light .bg-\[\#14171F\]\/95,
+html.light .bg-\[\#161920\],
+html.light .bg-\[\#1A1D24\],
+html.light .bg-\[\#1A1D24\]\/80,
+html.light .bg-\[\#12141A\],
+html.light .bg-\[\#111318\],
+html.light .bg-dark-panel {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light .bg-\[\#1E2330\],
+html.light .bg-\[\#262A34\],
+html.light .bg-\[\#222630\],
+html.light .bg-dark-hover {
+  background-color: #F1F5F9 !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+}
+
+html.light .border-white\/10,
+html.light .border-white\/5,
+html.light .border-white\/20,
+html.light .border-dark-border {
+  border-color: #E2E8F0 !important;
+}
+
+html.light .text-white,
+html.light .text-gray-100,
+html.light .text-gray-200,
+html.light .text-gray-300 {
+  color: #0F172A !important;
+}
+
+html.light .text-white\/90,
+html.light .text-white\/80,
+html.light .text-white\/70,
+html.light .text-gray-400 {
+  color: #334155 !important;
+}
+
+html.light .text-white\/60,
+html.light .text-white\/50 {
+  color: #475569 !important;
+}
+
+html.light .text-white\/40,
+html.light .text-white\/30,
+html.light .text-white\/20,
+html.light .text-gray-500 {
+  color: #64748B !important;
+}
+
+/* Gradients on headers/titles in Light mode */
+html.light .from-white {
+  --tw-gradient-from: #0F172A var(--tw-gradient-from-position, ) !important;
+  color: #0F172A !important;
+}
+html.light .to-white\/60 {
+  --tw-gradient-to: #475569 var(--tw-gradient-to-position, ) !important;
+}
+
+/* Inputs & Form Elements */
+html.light input,
+html.light select,
+html.light textarea,
+html.light input.bg-\[\#0F1115\] {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+  border-color: #CBD5E1 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* Glass Panels & Cards */
+html.light .glass-panel,
+html.light .glass-card {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Header buttons & nav items */
+html.light nav button:not(.bg-blue-600) {
+  color: #475569 !important;
+}
+html.light nav button:not(.bg-blue-600):hover {
+  background-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+/* Hover effects */
+html.light .hover\:bg-white\/5:hover,
+html.light .hover\:bg-white\/10:hover {
+  background-color: #F1F5F9 !important;
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}

@@ -49,6 +49,38 @@ def get_active_window_title():
     except Exception:
         return "Unknown Window"
 
+def check_usb_drives():
+    usb_drives = []
+    # 1. Removable USB Storage / Pen Drives / Flash Drives
+    try:
+        for p in psutil.disk_partitions(all=False):
+            try:
+                drive_type = ctypes.windll.kernel32.GetDriveTypeW(p.mountpoint)
+                if drive_type == 2 or 'removable' in p.opts.lower():
+                    vol_buf = ctypes.create_unicode_buffer(1024)
+                    ctypes.windll.kernel32.GetVolumeInformationW(
+                        ctypes.c_wchar_p(p.mountpoint), vol_buf, 1024, None, None, None, None, 0
+                    )
+                    vol_name = vol_buf.value or "USB Flash Drive"
+                    usb_drives.append(f"USB Storage: {p.mountpoint} [{vol_name}]")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 2. Connected Mobile Phones (Android / iPhone MTP & PTP Portable Devices)
+    try:
+        import win32com.client
+        wmi = win32com.client.GetObject('winmgmts:')
+        devices = wmi.ExecQuery("SELECT Name FROM Win32_PnPEntity WHERE PNPClass = 'PortableDevice' OR PNPClass = 'WPD'")
+        for d in devices:
+            if d.Name:
+                usb_drives.append(f"Mobile Phone / MTP Device: {d.Name}")
+    except Exception:
+        pass
+
+    return usb_drives
+
 def capture_screen():
     # Capture the primary monitor
     monitor = sct.monitors[1]
@@ -113,6 +145,8 @@ def main_loop():
             idle_seconds = get_idle_time()
             active_window = get_active_window_title()
             num_monitors = len(sct.monitors) - 1 # mss index 0 is all monitors combined
+            usb_events = check_usb_drives()
+            usb_detected = len(usb_events) > 0
             
             sio.emit('agent:activity', {
                 'mouse_delta': 10,
@@ -121,7 +155,9 @@ def main_loop():
                 'processes': processes,
                 'active_window': active_window,
                 'secondary_monitor': num_monitors > 1,
-                'monitor_count': num_monitors
+                'monitor_count': num_monitors,
+                'usb_detected': usb_detected,
+                'usb_events': usb_events
             }, namespace='/agent')
             
             # Reset cadence counter per window
