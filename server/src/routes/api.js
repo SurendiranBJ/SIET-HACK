@@ -92,15 +92,47 @@ router.get('/rules', async (req, res) => {
 });
 
 router.put('/rules/:id', async (req, res) => {
-  const { db } = req;
+  const { db, agentNs } = req;
   const { enabled, threshold_value, weight } = req.body;
   try {
     await db.run(
       'UPDATE rules SET enabled = ?, threshold_value = ?, weight = ? WHERE id = ?',
       [enabled, typeof threshold_value === 'string' ? threshold_value : JSON.stringify(threshold_value), weight, req.params.id]
     );
+
     await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
       ['admin', 'update_rule', req.params.id, `Rule ${req.params.id} updated`]);
+
+    const updatedRule = await db.get('SELECT rule_type, enabled, threshold_value FROM rules WHERE id = ?', [req.params.id]);
+    if (updatedRule && updatedRule.rule_type === 'blacklisted_app' && agentNs) {
+      let keywords = [];
+      if (updatedRule.enabled) {
+        try {
+          const parsed = JSON.parse(updatedRule.threshold_value || '[]');
+          keywords = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          keywords = String(updatedRule.threshold_value || '').split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+      agentNs.emit('command:update_blocklist', { keywords });
+    }
+
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/rules/blacklist/clear', async (req, res) => {
+  const { db, agentNs } = req;
+  try {
+    await db.run('UPDATE rules SET threshold_value = ? WHERE rule_type = ?', ['[]', 'blacklisted_app']);
+
+    if (agentNs) {
+      agentNs.emit('command:update_blocklist', { keywords: [] });
+    }
+
+    await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+      ['admin', 'clear_blocklist', 'blacklisted_app', 'Cleared blacklisted app blocklist and broadcast clear command']);
+
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

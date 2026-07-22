@@ -5,6 +5,8 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
 
   // In-memory registry: socket.id -> { student_id(string), student_id_num, name, last_frame }
   const connectedAgents = {};
+  // In-memory ban registry: student_id -> expiryTimestamp (ms)
+  const bannedStudents = {};
 
   // Heartbeat interval: mark agents offline if no ping in 15s
   setInterval(() => {
@@ -60,19 +62,39 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
         ['teacher', 'unlock_screen', student_id, 'Remote screen unlock triggered']);
     });
 
-    // Teacher sends a live warning message to a specific student's screen
-    socket.on('teacher:warn_student', (data) => {
-      const { student_id, message } = data;
+    // Teacher requests to kick a student (disconnect their agent)
+    socket.on('teacher:kick_student', (data) => {
+      const { student_id } = data;
+      // optional duration in minutes (defaults to 5)
+      const durationMinutes = Number(data?.duration_minutes || 5);
+      const expiry = Date.now() + Math.max(1, durationMinutes) * 60 * 1000;
       for (const [sid, agent] of Object.entries(connectedAgents)) {
         if (agent.string_id === student_id) {
-          agentNs.to(sid).emit('command:warn', { message: message || 'Your exam is being monitored. Please focus.' });
+          try {
+            // mark temporarily banned to prevent immediate reconnects
+            bannedStudents[String(student_id)] = expiry;
+          } catch (e) { console.warn('failed to set ban', e); }
+
+          try {
+            // Notify the agent first; agent will handle graceful shutdown on receipt
+            agentNs.to(sid).emit('command:kickout', { reason: 'Kicked by teacher' });
+          } catch (err) { console.warn('Failed to send kick command to agent', err); }
+
+          // Attempt to forcibly disconnect the socket after notifying
+          try {
+            const targetSocket = agentNs.sockets.get(sid);
+            if (targetSocket) targetSocket.disconnect(true);
+          } catch (err) { console.warn('Failed to forcibly disconnect agent socket', err); }
+
+          // Update in-memory registry and notify dashboards (include ban expiry)
+          delete connectedAgents[sid];
+          dashboardNs.to('session:active').emit('session:student_left', { student_id });
+          dashboardNs.to('session:active').emit('student:kicked', { student_id, banned_until: new Date(expiry).toISOString() });
+          db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+            ['teacher', 'kick_student', student_id, `Teacher forced disconnect (kick). Banned until ${new Date(expiry).toISOString()}`]);
           break;
         }
       }
-      // Also broadcast to browser-based students via dashboard namespace
-      dashboardNs.to('session:active').emit('student:warned', { student_id, message });
-      db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
-        ['teacher', 'warn_student', student_id, `Warning sent: ${message}`]);
     });
 
     socket.on('disconnect', () => {
@@ -91,6 +113,20 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
     // Registration
     socket.on('agent:register', async (data) => {
       const { student_id, hostname, ip, mac } = data;
+      // Reject registration if student is temporarily banned
+      try {
+        const banExpiry = bannedStudents[String(student_id)];
+        if (banExpiry && Date.now() < banExpiry) {
+          // Notify dashboard that banned agent attempted reconnect
+          dashboardNs.to('session:active').emit('session:ban_attempt', { student_id, banned_until: new Date(banExpiry).toISOString() });
+          // Instruct agent to disconnect and refuse registration
+          try { socket.emit('command:kickout', { reason: 'You are temporarily banned by instructor' }); } catch (e) { }
+          try { socket.disconnect(true); } catch (e) { }
+          try { await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)', ['system', 'ban_block_reject', student_id, `Rejected registration while banned until ${new Date(banExpiry).toISOString()}`]); } catch (e) { }
+          return;
+        }
+      } catch (e) { console.warn('ban check failed', e); }
+
       try {
         await db.run(
           `INSERT INTO students (student_id, name, hostname, ip_address, mac_address) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET hostname=?, ip_address=?, mac_address=?`,
@@ -121,6 +157,17 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
           hostname,
           ip
         });
+        const rule = await db.get('SELECT enabled, threshold_value FROM rules WHERE rule_type = ?', ['blacklisted_app']);
+        let keywords = [];
+        if (rule && rule.enabled) {
+          try {
+            const parsed = JSON.parse(rule.threshold_value || '[]');
+            keywords = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            keywords = String(rule.threshold_value || '').split(',').map(s => s.trim()).filter(Boolean);
+          }
+        }
+        socket.emit('command:update_blocklist', { keywords });
         console.log(`Agent registered: ${stringId}`);
       } catch(e) {
         console.error('Registration error:', e);
@@ -147,6 +194,39 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
       if (!numId || !stringId) return;
 
       const { mouse_delta, keystroke_count, idle_seconds } = data;
+      // Immediate detection: check for window spike and AI site keywords and notify dashboard/admin right away
+      try {
+        const procString = (Array.isArray(data.processes) ? data.processes.join(' ') : String(data.processes || '')).toLowerCase();
+        const windowTitle = String(data.active_window || '').toLowerCase();
+        const combinedTarget = `${procString} ${windowTitle}`;
+
+        const aiKeywords = ['chatgpt', 'openai', 'gpt', 'instagram', 'bard', 'dalle', 'midjourney', 'perplexity'];
+        for (const kw of aiKeywords) {
+          if (combinedTarget.includes(kw)) {
+            dashboardNs.to('session:active').emit('alert:ai_site', {
+              student_id: stringId,
+              detail: `AI/managed site detected: ${kw}`,
+              timestamp: new Date().toISOString()
+            });
+            // Send immediate blocklist update to the originating agent to attempt blocking the domain/process
+            try {
+              socket.emit('command:update_blocklist', { keywords: [kw] });
+            } catch (err) { console.warn('Failed to send update_blocklist to agent', err); }
+            break;
+          }
+        }
+
+        const window_count = data.window_count || 0;
+        if (window_count > 4) {
+          dashboardNs.to('session:active').emit('alert:window_spike', {
+            student_id: stringId,
+            detail: `Window spike detected: ${window_count} active open windows`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        console.warn('Immediate detection error', e);
+      }
       const typing_speed = keystroke_count || 0;
       const mouseScore = mouse_delta || 0;
       const overall_activity_score = Math.min(100, Math.floor((mouseScore * 0.05) + (typing_speed * 2)));
@@ -185,6 +265,17 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
             severity: 'high',
             timestamp: new Date().toISOString()
           });
+
+          // Explicit admin alert for window spike to ensure urgent visibility
+          if (flag.rule_type === 'window_spike') {
+            try {
+              dashboardNs.to('session:active').emit('alert:window_spike', {
+                student_id: stringId,
+                detail: flag.detail,
+                timestamp: new Date().toISOString()
+              });
+            } catch (err) { console.warn('Failed to emit window_spike alert', err); }
+          }
         }
 
         const newRiskScore = await riskEngine.computeRiskScore(numId, sessionId, db);

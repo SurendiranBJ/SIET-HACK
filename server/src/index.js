@@ -36,9 +36,10 @@ async function startServer() {
 
   const connectedAgents = setupSocketHandlers(agentNs, dashboardNs, db);
 
-  // Attach connectedAgents so API routes can read live agent status
+  // Attach live agent helpers so API routes can access namespaces and current agent state
   app.use((req, res, next) => {
     req.connectedAgents = connectedAgents;
+    req.agentNs = agentNs;
     next();
   });
 
