@@ -60,6 +60,21 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
         ['teacher', 'unlock_screen', student_id, 'Remote screen unlock triggered']);
     });
 
+    // Teacher sends a live warning message to a specific student's screen
+    socket.on('teacher:warn_student', (data) => {
+      const { student_id, message } = data;
+      for (const [sid, agent] of Object.entries(connectedAgents)) {
+        if (agent.string_id === student_id) {
+          agentNs.to(sid).emit('command:warn', { message: message || 'Your exam is being monitored. Please focus.' });
+          break;
+        }
+      }
+      // Also broadcast to browser-based students via dashboard namespace
+      dashboardNs.to('session:active').emit('student:warned', { student_id, message });
+      db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+        ['teacher', 'warn_student', student_id, `Warning sent: ${message}`]);
+    });
+
     socket.on('disconnect', () => {
       console.log(`Dashboard disconnected: ${socket.id}`);
     });

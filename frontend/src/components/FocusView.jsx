@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, Monitor, TerminalSquare, Camera, Lock, Clock } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { X, ShieldAlert, Monitor, TerminalSquare, Camera, Lock, Clock, TrendingUp, AlertTriangle, CheckCircle, MessageSquare, BarChart2 } from 'lucide-react';
 import { getApiUrl } from '../config';
 
 const safeString = (val, fallback = '') => {
@@ -11,14 +11,222 @@ const safeString = (val, fallback = '') => {
 
 const formatRule = (rule) => {
   const str = safeString(rule, 'Violation');
-  return str.replace(/_/g, ' ');
+  return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
 
-export default function FocusView({ student, onClose, onLockScreen, onUnlockScreen }) {
+const RULE_COLORS = {
+  tab_switched: 'text-orange-400',
+  blacklisted_app: 'text-red-400',
+  window_spike: 'text-cyan-400',
+  idle_timeout: 'text-yellow-400',
+  usb_detected: 'text-pink-400',
+  secondary_monitor: 'text-blue-400',
+  large_clipboard_paste: 'text-purple-400',
+  remote_access_tool: 'text-red-500',
+  statistical_anomaly: 'text-amber-400',
+};
+
+// ── Risk Score Breakdown ─────────────────────────────────────────────────────
+function RiskBreakdown({ flags }) {
+  if (!flags || flags.length === 0) return null;
+
+  // Group by rule_type and sum weights
+  const breakdown = {};
+  flags.forEach(f => {
+    const key = f.rule_type || 'unknown';
+    if (!breakdown[key]) breakdown[key] = { label: formatRule(key), total: 0, count: 0 };
+    breakdown[key].total += (f.risk_score_delta || f.weight || 10);
+    breakdown[key].count += 1;
+  });
+
+  const entries = Object.entries(breakdown).sort((a, b) => b[1].total - a[1].total);
+  const grandTotal = Math.min(100, entries.reduce((s, [, v]) => s + v.total, 0));
+
+  return (
+    <div className="bg-[#0F1115] rounded-xl p-3.5 border border-white/10">
+      <p className="text-[10px] text-white/40 font-bold tracking-wider uppercase mb-3 flex items-center gap-2">
+        <BarChart2 className="w-3 h-3" /> Risk Score Breakdown
+      </p>
+      <div className="space-y-2">
+        {entries.map(([key, val]) => {
+          const color = RULE_COLORS[key] || 'text-white/60';
+          const pct = grandTotal > 0 ? (val.total / grandTotal) * 100 : 0;
+          return (
+            <div key={key}>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className={`text-xs font-semibold ${color}`}>
+                  {val.label}
+                  {val.count > 1 && <span className="text-white/30 ml-1">×{val.count}</span>}
+                </span>
+                <span className="text-xs font-mono text-white/60">+{val.total}pts</span>
+              </div>
+              <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-red-500/60 to-red-400/80 rounded-full transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 pt-2 border-t border-white/5 flex justify-between items-center">
+        <span className="text-[10px] text-white/30 uppercase tracking-wider">Total Score</span>
+        <span className={`text-sm font-bold ${grandTotal >= 60 ? 'text-red-400' : grandTotal >= 30 ? 'text-yellow-400' : 'text-green-400'}`}>
+          {grandTotal}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Timeline Scrubber ────────────────────────────────────────────────────────
+function TimelineScrubber({ flags, snapshots, onSelectSnap }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+
+  if (!flags || flags.length === 0) return null;
+
+  // Build unified timeline sorted oldest → newest
+  const allTimes = flags.map(f => new Date(f.timestamp || f.created_at).getTime()).filter(Boolean);
+  if (allTimes.length === 0) return null;
+
+  const minT = Math.min(...allTimes);
+  const maxT = Math.max(...allTimes);
+  const range = maxT - minT || 1;
+
+  // Match each flag to nearest snapshot
+  const matchSnapshot = (flag) => {
+    const fTime = new Date(flag.timestamp || flag.created_at).getTime();
+    if (!snapshots?.length) return null;
+    return snapshots.reduce((best, snap) => {
+      const sTime = new Date(snap.created_at).getTime();
+      const bestTime = best ? new Date(best.created_at).getTime() : Infinity;
+      return Math.abs(sTime - fTime) < Math.abs(bestTime - fTime) ? snap : best;
+    }, null);
+  };
+
+  return (
+    <div className="bg-[#0F1115] rounded-xl p-3 border border-white/10">
+      <p className="text-[10px] text-white/40 font-bold tracking-wider uppercase mb-3 flex items-center gap-2">
+        <Clock className="w-3 h-3" /> Session Timeline Scrubber
+      </p>
+      <div className="relative h-8 bg-white/5 rounded-full mx-1">
+        {/* Timeline track */}
+        <div className="absolute inset-0 flex items-center px-1">
+          <div className="w-full h-0.5 bg-white/10 rounded-full" />
+        </div>
+
+        {/* Incident dots */}
+        {flags.map((f, i) => {
+          const fTime = new Date(f.timestamp || f.created_at).getTime();
+          if (!fTime) return null;
+          const pct = ((fTime - minT) / range) * 100;
+          const color = RULE_COLORS[f.rule_type] || 'text-red-400';
+          const bgClass = f.rule_type === 'tab_switched' ? 'bg-orange-500' :
+            f.rule_type === 'blacklisted_app' ? 'bg-red-500' :
+            f.rule_type === 'window_spike' ? 'bg-cyan-500' :
+            f.rule_type === 'idle_timeout' ? 'bg-yellow-500' :
+            'bg-red-400';
+
+          return (
+            <div
+              key={f.id || i}
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer group/dot"
+              style={{ left: `${pct}%` }}
+              onMouseEnter={() => setHoverIdx(i)}
+              onMouseLeave={() => setHoverIdx(null)}
+              onClick={() => {
+                const snap = matchSnapshot(f);
+                if (snap) onSelectSnap(snap);
+              }}
+            >
+              <div className={`w-3 h-3 rounded-full ${bgClass} border-2 border-[#0F1115] transition-all group-hover/dot:scale-150`} />
+              {/* Tooltip */}
+              {hoverIdx === i && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-[#1A1D24] border border-white/10 rounded-lg px-2 py-1.5 text-[10px] whitespace-nowrap z-50 shadow-xl pointer-events-none">
+                  <p className={`font-bold ${color}`}>{formatRule(f.rule_type)}</p>
+                  <p className="text-white/40">{new Date(f.timestamp || f.created_at).toLocaleTimeString()}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Time labels */}
+      <div className="flex justify-between mt-1.5 px-1">
+        <span className="text-[9px] text-white/20 font-mono">
+          {new Date(minT).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <span className="text-[9px] text-white/20">{flags.length} incidents</span>
+        <span className="text-[9px] text-white/20 font-mono">
+          {new Date(maxT).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Warn Modal ───────────────────────────────────────────────────────────────
+function WarnModal({ onSend, onClose }) {
+  const [msg, setMsg] = useState('');
+  const presets = [
+    'Please focus on your exam.',
+    'Your activity is being monitored. Suspicious behavior detected.',
+    'Close all unauthorized applications immediately.',
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-[#1A1D24] border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <h3 className="text-lg font-bold text-white mb-1">Send Warning to Student</h3>
+        <p className="text-xs text-white/40 mb-4">Message will appear as a popup on the student's screen immediately.</p>
+        <div className="space-y-2 mb-3">
+          {presets.map((p, i) => (
+            <button
+              key={i}
+              onClick={() => setMsg(p)}
+              className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/70 transition-all border border-white/5"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={msg}
+          onChange={e => setMsg(e.target.value)}
+          placeholder="Or type a custom message…"
+          className="w-full bg-[#0F1115] border border-white/10 rounded-xl p-3 text-sm text-white placeholder-white/20 resize-none h-20 focus:outline-none focus:border-blue-500/40 mb-4"
+        />
+        <div className="flex gap-3">
+          <button
+            onClick={() => { if (msg.trim()) { onSend(msg.trim()); onClose(); } }}
+            disabled={!msg.trim()}
+            className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-40 text-white rounded-xl font-bold text-sm transition-all"
+          >
+            ⚠️ Send Warning
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-xl text-sm transition-all"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main FocusView ───────────────────────────────────────────────────────────
+export default function FocusView({ student, onClose, onLockScreen, onUnlockScreen, socket }) {
   const [explanation, setExplanation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
   const [activeSnap, setActiveSnap] = useState(null);
+  const [showWarnModal, setShowWarnModal] = useState(null);
+  const [dismissedIds, setDismissedIds] = useState(new Set());
+  const [actionFeedback, setActionFeedback] = useState('');
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -41,29 +249,59 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
           setLoading(false);
         }
       })
-      .catch(() => {
-        if (isMounted) setLoading(false);
-      });
+      .catch(() => { if (isMounted) setLoading(false); });
 
     fetch(getApiUrl(`/students/${student.student_id}/snapshots`))
       .then(r => (r.ok ? r.json() : []))
       .then(data => {
-        if (isMounted) {
-          setSnapshots(Array.isArray(data) ? [...data].reverse() : []);
-        }
+        if (isMounted) setSnapshots(Array.isArray(data) ? [...data].reverse() : []);
       })
-      .catch(() => {
-        if (isMounted) setSnapshots([]);
-      });
+      .catch(() => { if (isMounted) setSnapshots([]); });
 
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [student?.student_id, student?.flags?.length]);
+
+  const showFeedback = (msg) => {
+    setActionFeedback(msg);
+    setTimeout(() => setActionFeedback(''), 3000);
+  };
+
+  const handleDismissFlag = async (flagId) => {
+    try {
+      const res = await fetch(getApiUrl(`/flags/${flagId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'dismissed' }),
+      });
+      if (res.ok) {
+        setDismissedIds(prev => new Set([...prev, flagId]));
+        showFeedback('✅ Incident dismissed successfully.');
+      }
+    } catch { showFeedback('❌ Failed to dismiss incident.'); }
+  };
+
+  const handleFlagForReview = async (flagId) => {
+    try {
+      const res = await fetch(getApiUrl(`/flags/${flagId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'flagged_for_review' }),
+      });
+      if (res.ok) showFeedback('⚠️ Flagged for human review.');
+    } catch { showFeedback('❌ Failed to flag for review.'); }
+  };
+
+  const handleWarnStudent = (message) => {
+    if (socket) {
+      socket.emit('teacher:warn_student', { student_id: student.student_id, message });
+      showFeedback('📢 Warning sent to student\'s screen!');
+    }
+  };
 
   if (!student) return null;
 
-  const studentFlags = Array.isArray(student.flags) ? student.flags : [];
+  const allFlags = Array.isArray(student.flags) ? student.flags : [];
+  const studentFlags = allFlags.filter(f => !dismissedIds.has(f.id));
   const risk = typeof student.risk_score === 'number' ? student.risk_score : 0;
   const riskColor =
     risk >= 60
@@ -72,23 +310,31 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
       ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'
       : 'text-green-400 bg-green-500/10 border-green-500/20';
 
-  const firstFlagRule = studentFlags.length > 0 ? formatRule(studentFlags[0]?.rule_type) : '';
-
   return (
     <div
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && onClose) onClose();
-      }}
+      onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
     >
+      {showWarnModal && (
+        <WarnModal onSend={handleWarnStudent} onClose={() => setShowWarnModal(false)} />
+      )}
+
       <div className="bg-[#14171F] border border-white/10 w-full max-w-7xl h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        {/* Alert Banner for Auto-Focus on Unusual Behavior */}
+
+        {/* Alert Banner */}
         {studentFlags.length > 0 && (
           <div className="bg-red-600/90 text-white px-6 py-2 flex items-center justify-between text-xs font-bold tracking-wider uppercase animate-pulse">
             <span className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4" /> Unusual Behavior Detected — Automatically Brought to Full Screen
+              <ShieldAlert className="w-4 h-4" /> Unusual Behavior Detected — {studentFlags.length} Active Incidents
             </span>
-            <span>Flagged: {firstFlagRule}</span>
+            <span>{formatRule(studentFlags[0]?.rule_type)}</span>
+          </div>
+        )}
+
+        {/* Action Feedback Toast */}
+        {actionFeedback && (
+          <div className="bg-blue-600/20 border-b border-blue-500/20 text-blue-300 px-6 py-2 text-xs font-semibold">
+            {actionFeedback}
           </div>
         )}
 
@@ -110,7 +356,17 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
               Risk: {risk}%
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2">
+            {/* Warn Student */}
+            <button
+              onClick={() => setShowWarnModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 rounded-xl text-sm border border-orange-500/20 transition-all font-medium"
+            >
+              <MessageSquare className="w-4 h-4" /> Warn
+            </button>
+
+            {/* Lock/Unlock */}
             {student.is_locked ? (
               <button
                 onClick={() => onUnlockScreen && onUnlockScreen(student.student_id)}
@@ -126,6 +382,7 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
                 <Lock className="w-4 h-4" /> Lock Screen
               </button>
             )}
+
             <button
               onClick={() => onClose && onClose()}
               className="p-2 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-all"
@@ -137,7 +394,7 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
 
         {/* Body */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left: Live Feed + Telemetry */}
+          {/* Left: Live Feed + Timeline + Snapshots */}
           <div className="flex-1 flex flex-col p-5 gap-4 overflow-y-auto">
             {/* Live screen */}
             <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 relative">
@@ -182,7 +439,14 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
               ))}
             </div>
 
-            {/* Auto-captured snapshots */}
+            {/* Timeline Scrubber */}
+            <TimelineScrubber
+              flags={studentFlags}
+              snapshots={snapshots}
+              onSelectSnap={setActiveSnap}
+            />
+
+            {/* Evidence Snapshots */}
             {snapshots.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -193,7 +457,9 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
                     <div
                       key={snap?.id || snap?.created_at || i}
                       onClick={() => setActiveSnap(activeSnap?.id === snap?.id ? null : snap)}
-                      className="flex-shrink-0 w-32 cursor-pointer rounded-lg overflow-hidden border border-white/10 hover:border-blue-500/50 transition-all"
+                      className={`flex-shrink-0 w-32 cursor-pointer rounded-lg overflow-hidden border transition-all ${
+                        activeSnap?.id === snap?.id ? 'border-blue-500' : 'border-white/10 hover:border-blue-500/50'
+                      }`}
                     >
                       {snap?.jpeg_base64 && (
                         <img
@@ -221,8 +487,9 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
             )}
           </div>
 
-          {/* Right Sidebar: AI Engine + Incident Timeline */}
-          <div className="w-96 border-l border-white/5 bg-[#1A1D24] flex flex-col overflow-y-auto p-5 gap-6">
+          {/* Right Sidebar */}
+          <div className="w-96 border-l border-white/5 bg-[#1A1D24] flex flex-col overflow-y-auto p-5 gap-5">
+
             {/* AI Behavior Engine */}
             <div>
               <h3 className="text-xs font-bold text-white/40 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -284,6 +551,9 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
               )}
             </div>
 
+            {/* Risk Score Breakdown */}
+            <RiskBreakdown flags={studentFlags} />
+
             {/* Incident Timeline */}
             <div className="pt-4 border-t border-white/5">
               <h3 className="text-xs font-bold text-white/40 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -291,25 +561,42 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
               </h3>
               <div className="space-y-3">
                 {studentFlags.length === 0 ? (
-                  <p className="text-sm text-white/20 italic">No incidents recorded in this session.</p>
+                  <p className="text-sm text-white/20 italic">No active incidents in this session.</p>
                 ) : (
                   studentFlags.map((f, i) => (
-                    <div key={f?.timestamp || i} className="flex gap-3 bg-[#0F1115] p-3 rounded-xl border border-white/5">
-                      <div className="flex flex-col items-center">
+                    <div key={f?.id || f?.timestamp || i} className="bg-[#0F1115] p-3 rounded-xl border border-white/5">
+                      <div className="flex items-start gap-3">
                         <div className="w-2.5 h-2.5 rounded-full bg-red-500 mt-1 shrink-0" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-bold text-red-400 uppercase tracking-wide">
-                            {formatRule(f?.rule_type)}
-                          </p>
-                          {f?.timestamp && (
-                            <span className="text-[10px] text-white/30 font-mono">
-                              {new Date(f.timestamp).toLocaleTimeString()}
-                            </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className={`text-xs font-bold uppercase tracking-wide ${RULE_COLORS[f?.rule_type] || 'text-red-400'}`}>
+                              {formatRule(f?.rule_type)}
+                            </p>
+                            {f?.timestamp && (
+                              <span className="text-[10px] text-white/30 font-mono">
+                                {new Date(f.timestamp).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-white/60 leading-relaxed mb-2">{safeString(f?.detail)}</p>
+                          {/* Action buttons per incident */}
+                          {f?.id && (
+                            <div className="flex gap-1.5 mt-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDismissFlag(f.id); }}
+                                className="flex items-center gap-1 px-2 py-0.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded text-[10px] font-medium transition-all border border-green-500/20"
+                              >
+                                <CheckCircle className="w-2.5 h-2.5" /> Dismiss
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleFlagForReview(f.id); }}
+                                className="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 rounded text-[10px] font-medium transition-all border border-yellow-500/20"
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5" /> Review
+                              </button>
+                            </div>
                           )}
                         </div>
-                        <p className="text-xs text-white/60 leading-relaxed">{safeString(f?.detail)}</p>
                       </div>
                     </div>
                   ))

@@ -117,6 +117,39 @@ router.get('/students/:id/flags', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+router.patch('/flags/:id', async (req, res) => {
+  const { db } = req;
+  const { status } = req.body; // 'dismissed' | 'flagged_for_review'
+  const validStatuses = ['dismissed', 'flagged_for_review', 'active'];
+  if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  try {
+    await db.run(`UPDATE flags SET status = ? WHERE id = ?`, [status, req.params.id]);
+    await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+      ['teacher', 'update_flag', req.params.id, `Flag ${req.params.id} marked as ${status}`]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── RISK HISTORY (for sparkline trend charts) ────────────────────────────────
+router.get('/students/:id/risk-history', async (req, res) => {
+  const { db } = req;
+  const sid = req.params.id;
+  try {
+    const student = await db.get(`SELECT id FROM students WHERE student_id = ?`, [sid]);
+    if (!student) return res.json([]);
+    const flags = await db.all(
+      `SELECT risk_score_delta, created_at FROM flags WHERE student_id = ? AND status != 'dismissed' ORDER BY created_at ASC`,
+      [student.id]
+    );
+    let cumulative = 0;
+    const history = flags.map(f => {
+      cumulative = Math.min(100, cumulative + (f.risk_score_delta || 0));
+      return { time: f.created_at, risk: cumulative };
+    });
+    res.json(history);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── SNAPSHOTS ───────────────────────────────────────────────────────────────
 router.get('/students/:id/snapshots', async (req, res) => {
   const { db } = req;

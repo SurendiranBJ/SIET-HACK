@@ -12,6 +12,7 @@ const StudentPortal = () => {
   const [telemetry, setTelemetry] = useState({ keystrokes: 0, idle: 0, tabSwitches: 0, activeWindow: 'Exam Portal' });
   const [examText, setExamText] = useState('');
   const [isLocked, setIsLocked] = useState(false);
+  const [teacherWarning, setTeacherWarning] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState('answer');
   const [browserTab, setBrowserTab] = useState(() => {
     const ua = navigator.userAgent.toLowerCase();
@@ -180,6 +181,9 @@ const StudentPortal = () => {
       socket.on('command:unlock_screen', () => {
         setIsLocked(false);
       });
+      socket.on('command:warn', (data) => {
+        setTeacherWarning(data?.message || 'Warning from your teacher.');
+      });
 
       const startLoop = () => {
         socket.emit('agent:register', {
@@ -265,6 +269,32 @@ const StudentPortal = () => {
 
   return (
     <div className="min-h-screen bg-[#0F1115] text-white p-6 relative">
+
+      {/* Teacher Warning Overlay */}
+      {teacherWarning && (
+        <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-[#1A1D24] border-2 border-orange-500/60 rounded-2xl p-8 max-w-lg w-full shadow-[0_0_60px_rgba(249,115,22,0.3)] animate-bounce-once">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="w-7 h-7 text-orange-400" />
+              </div>
+              <div>
+                <p className="text-xs text-orange-400 font-bold uppercase tracking-wider mb-0.5">⚠️ Message from Proctoring Faculty</p>
+                <h3 className="text-lg font-bold text-white">Official Warning</h3>
+              </div>
+            </div>
+            <p className="text-white/90 text-base leading-relaxed bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 mb-6">
+              {teacherWarning}
+            </p>
+            <button
+              onClick={() => setTeacherWarning(null)}
+              className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all text-sm"
+            >
+              I Understand — Close Warning
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Screen Lock Overlay */}
       {isLocked && (

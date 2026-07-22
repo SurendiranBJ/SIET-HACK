@@ -200,13 +200,11 @@ class RulesEngine {
     }
 
     let windowSpikeThreshold = 4;
-    if (this.rules['window_spike'] && this.rules['window_spike'].threshold_value) {
-      try {
-        const tv = typeof this.rules['window_spike'].threshold_value === 'string' 
-          ? JSON.parse(this.rules['window_spike'].threshold_value) 
-          : this.rules['window_spike'].threshold_value;
-        if (tv && typeof tv.count === 'number') windowSpikeThreshold = tv.count;
-      } catch (e) {}
+    if (this.rules['window_spike'] && this.rules['window_spike'].threshold) {
+      const tv = this.rules['window_spike'].threshold;
+      if (typeof tv === 'object' && typeof tv.count === 'number') {
+        windowSpikeThreshold = tv.count;
+      }
     }
 
     if (this.rules['window_spike'] && window_count && window_count > windowSpikeThreshold && this.shouldFire(studentId, 'window_spike')) {
