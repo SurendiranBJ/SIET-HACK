@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { Shield, LayoutGrid, Activity, MapPin, Settings, Lock, FileText, Search, X, Download } from 'lucide-react';
+import { getApiUrl, getSocketUrl } from '../config';
 
 import LiveGrid from '../components/LiveGrid';
 import ActivityHeatmap from '../components/ActivityHeatmap';
@@ -17,15 +18,36 @@ const TeacherDashboard = () => {
   const [filterRisk, setFilterRisk] = useState('all'); // all | high | low
   const [sessionSummary, setSessionSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [alertBanner, setAlertBanner] = useState(null); // { student_id, detail } | null
   const socketRef = useRef(null);
+  const lastAlertSoundRef = useRef(0);
+  const alertTimeoutRef = useRef(null);
   const navigate = useNavigate();
+
+  // Short beep via Web Audio API — no external asset needed.
+  const playAlertBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.35);
+    } catch (e) {
+      console.warn('Could not play alert sound', e);
+    }
+  };
 
   const userStr = localStorage.getItem('siet_user');
   const user = userStr ? JSON.parse(userStr) : { username: 'Teacher' };
-  const host = window.location.hostname;
 
   useEffect(() => {
-    const SERVER_URL = `http://${host}:3000/dashboard`;
+    const SERVER_URL = getSocketUrl('/dashboard');
     const s = io(SERVER_URL, { reconnection: true, reconnectionDelay: 2000, reconnectionAttempts: Infinity });
     socketRef.current = s;
 
@@ -73,6 +95,19 @@ const TeacherDashboard = () => {
           }
         };
       });
+
+      // Only the serious stuff (high severity, e.g. blacklisted_app, remote_access_tool)
+      // gets the loud treatment — idle/tab-switch flags stay quiet in the flag list.
+      if (flag.severity === 'high') {
+        const now = Date.now();
+        if (now - lastAlertSoundRef.current > 3000) {
+          lastAlertSoundRef.current = now;
+          playAlertBeep();
+        }
+        setAlertBanner({ student_id: flag.student_id, detail: flag.detail });
+        if (alertTimeoutRef.current) clearTimeout(alertTimeoutRef.current);
+        alertTimeoutRef.current = setTimeout(() => setAlertBanner(null), 4000);
+      }
     });
 
     s.on('risk:update', (data) => {
@@ -100,14 +135,9 @@ const TeacherDashboard = () => {
     return () => s.disconnect();
   }, []);
 
-  // Only display students who are CURRENTLY connected and actively streaming screen frames
+  // Display all currently connected students
   const allStudents = Object.values(students);
   const filteredStudents = allStudents.filter(s => {
-    // Must be actively streaming screen frames right now (latestFrame must exist and be non-empty)
-    if (!s.latestFrame || typeof s.latestFrame !== 'string' || s.latestFrame.trim() === '') {
-      return false;
-    }
-
     const q = searchQuery.toLowerCase();
     const matchesSearch = !q ||
       (s.student_id || '').toLowerCase().includes(q) ||
@@ -134,7 +164,7 @@ const TeacherDashboard = () => {
   };
 
   const handleExport = async () => {
-    const url = `http://${host}:3000/api/session/export`;
+    const url = getApiUrl('/session/export');
     const res = await fetch(url);
     const blob = await res.blob();
     const a = document.createElement('a');
@@ -146,7 +176,7 @@ const TeacherDashboard = () => {
   const handleSessionSummary = async () => {
     setLoadingSummary(true);
     try {
-      const res = await fetch(`http://${host}:3000/api/session/summary`);
+      const res = await fetch(getApiUrl('/session/summary'));
       const data = await res.json();
       setSessionSummary(data);
       setActiveTab('summary');
@@ -164,6 +194,16 @@ const TeacherDashboard = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0F1115] text-white">
+      {/* ── HIGH-SEVERITY ALERT BANNER ── shown on top of every tab, not just Focus View */}
+      {alertBanner && (
+        <div className="bg-red-600 text-white px-6 py-2.5 flex items-center justify-between text-sm font-semibold sticky top-0 z-[60] animate-pulse">
+          <span>🚨 HIGH RISK — Student {alertBanner.student_id}: {alertBanner.detail}</span>
+          <button onClick={() => setAlertBanner(null)} className="text-white/80 hover:text-white ml-4">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* ── HEADER ── */}
       <header className="bg-[#14171F]/95 backdrop-blur border-b border-white/5 px-6 py-3 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
@@ -265,11 +305,11 @@ const TeacherDashboard = () => {
       {/* ── MAIN CONTENT ── */}
       <main className="flex-1 p-6 overflow-auto">
         {activeTab === 'grid' && (
-          <LiveGrid students={filteredStudents} flags={flags} onLockScreen={handleLockScreen} onUnlockScreen={handleUnlockScreen} socket={socketRef.current} host={host} />
+          <LiveGrid students={filteredStudents} flags={flags} onLockScreen={handleLockScreen} onUnlockScreen={handleUnlockScreen} socket={socketRef.current} />
         )}
         {activeTab === 'heatmap' && <ActivityHeatmap students={filteredStudents} />}
         {activeTab === 'map' && <SmartClassroomMap students={filteredStudents} flags={flags} />}
-        {activeTab === 'admin' && <AdminPanel host={host} />}
+        {activeTab === 'admin' && <AdminPanel />}
         {activeTab === 'privacy' && <PrivacyDashboard />}
         {activeTab === 'summary' && sessionSummary && (
           <SessionSummaryView summary={sessionSummary} onExport={handleExport} />

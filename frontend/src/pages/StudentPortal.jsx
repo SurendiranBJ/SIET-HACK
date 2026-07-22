@@ -103,6 +103,9 @@ const StudentPortal = () => {
     } else if (signalType === 'anydesk') {
       extraProcessesRef.current = ['chrome.exe', 'anydesk.exe', 'teamviewer.exe'];
       activeWindowRef.current = 'AnyDesk Remote Desktop Control';
+    } else if (signalType === 'social') {
+      extraProcessesRef.current = ['chrome.exe'];
+      activeWindowRef.current = 'Instagram - Google Chrome';
     } else if (signalType === 'usb') {
       usbDetectedRef.current = true;
     } else if (signalType === 'monitor') {
@@ -548,64 +551,7 @@ const StudentPortal = () => {
                 </div>
               </div>
 
-              {/* Quick Simulation Triggers for Evaluation & Testing */}
-              <div className="bg-[#1A1D24] border border-purple-500/20 rounded-2xl p-5 shadow-[0_0_20px_rgba(168,85,247,0.05)]">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400 mb-3 flex items-center gap-2">
-                  <Zap className="w-4 h-4" /> Live Rule Testing Controls (Simulate Signals)
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    onClick={() => triggerSignal('chatgpt')}
-                    className="px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-xs font-medium border border-purple-500/30 text-left transition-all"
-                  >
-                    🤖 ChatGPT / Banned Keyword
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('anydesk')}
-                    className="px-3 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-xl text-xs font-medium border border-red-500/30 text-left transition-all"
-                  >
-                    🖥️ AnyDesk / RAT Process
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('usb')}
-                    className="px-3 py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-xl text-xs font-medium border border-yellow-500/30 text-left transition-all"
-                  >
-                    🔌 USB Drive Connected
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('monitor')}
-                    className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-xs font-medium border border-blue-500/30 text-left transition-all"
-                  >
-                    📺 Secondary Display
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('spike')}
-                    className="px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 rounded-xl text-xs font-medium border border-cyan-500/30 text-left transition-all"
-                  >
-                    📈 Window Count Spike
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('paste')}
-                    className="px-3 py-2 bg-pink-600/20 hover:bg-pink-600/30 text-pink-300 rounded-xl text-xs font-medium border border-pink-500/30 text-left transition-all"
-                  >
-                    📋 External Copy &amp; Paste (450 chars)
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('idle')}
-                    className="px-3 py-2 bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 rounded-xl text-xs font-medium border border-orange-500/30 text-left transition-all"
-                  >
-                    💤 Idle Timeout (35s)
-                  </button>
-                </div>
-                <div className="mt-3 text-right">
-                  <button
-                    onClick={() => triggerSignal('normal')}
-                    className="text-xs text-white/40 hover:text-white underline transition-colors"
-                  >
-                    Reset all test signals to Normal
-                  </button>
-                </div>
-              </div>
+              {/* Testing controls removed for student view */}
             </div>
 
             {/* Status Panel */}

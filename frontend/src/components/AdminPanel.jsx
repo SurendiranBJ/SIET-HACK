@@ -30,12 +30,31 @@ export default function AdminPanel({ host }) {
   const fetchAgents = () => fetch(api('/agents/status')).then(r => r.json()).then(setAgents).catch(() => {});
   const fetchAuditLog = () => fetch(api('/audit-log')).then(r => r.json()).then(setAuditLog).catch(() => {});
 
+  const normalizeThresholdValue = (rule, value) => {
+    if (rule.rule_type === 'blacklisted_app' || rule.rule_type === 'remote_access_tool') {
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) return JSON.stringify(parsed);
+        } catch {
+          const entries = value.split(',').map(s => s.trim()).filter(Boolean);
+          return JSON.stringify(entries);
+        }
+      }
+    }
+    return value;
+  };
+
   const updateRule = async (rule, changes) => {
     const updated = { ...rule, ...changes };
+    const thresholdValue = changes.threshold_value !== undefined
+      ? normalizeThresholdValue(rule, changes.threshold_value)
+      : updated.threshold_value;
+
     await fetch(api(`/rules/${rule.id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: updated.enabled, threshold_value: updated.threshold_value, weight: updated.weight })
+      body: JSON.stringify({ enabled: updated.enabled, threshold_value: thresholdValue, weight: updated.weight })
     });
     fetchRules();
   };
@@ -51,6 +70,12 @@ export default function AdminPanel({ host }) {
     setNewStudent({ student_id: '', name: '' });
     fetchStudents();
     setLoading(false);
+  };
+
+  const clearBlacklist = async () => {
+    if (!window.confirm('Clear all blocks now?')) return;
+    await fetch(api('/rules/blacklist/clear'), { method: 'POST' });
+    fetchRules();
   };
 
   const deleteStudent = async (sid) => {
@@ -115,6 +140,16 @@ export default function AdminPanel({ host }) {
                     </button>
                   </div>
                 </div>
+                {rule.rule_type === 'blacklisted_app' && (
+                  <div className="mt-3">
+                    <button
+                      onClick={clearBlacklist}
+                      className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-red-300 transition-colors hover:bg-red-500/15"
+                    >
+                      Clear all blocks now
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <label className="text-xs text-white/30 block mb-1">Threshold</label>

@@ -3,48 +3,80 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0B0E14;
+    color: #E2E8F0;
+  }
+
   body {
-    @apply bg-dark-bg text-gray-200 font-sans antialiased;
     margin: 0;
+    min-height: 100vh;
+    background: #0B0E14;
+    color: #E2E8F0;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body, button, input, textarea, select {
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  code, kbd, pre, samp, tt {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  * {
+    box-sizing: border-box;
   }
 }
 
 @layer components {
-  .glass-panel {
-    @apply bg-dark-panel border border-dark-border rounded-xl shadow-lg backdrop-blur-md;
-  }
-  
-  .glass-card {
-    @apply bg-dark-panel/80 border border-dark-border rounded-lg shadow-sm transition-all duration-300;
-  }
-  
-  .btn-primary {
-    @apply bg-primary text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-blue-600 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)];
-  }
-  
-  .btn-danger {
-    @apply bg-danger text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-red-600 hover:shadow-[0_0_15px_rgba(239,68,68,0.4)];
+  .panel-card {
+    @apply rounded-3xl border border-[#1F2937] bg-[#141A24] shadow-[0_12px_32px_rgba(0,0,0,0.18)];
   }
 
-  .btn-secondary {
-    @apply bg-dark-hover text-gray-200 border border-dark-border px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-gray-700;
+  .status-pill {
+    @apply inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em];
   }
-  
-  .nav-item {
-    @apply px-4 py-2 text-gray-400 font-medium rounded-lg transition-colors cursor-pointer hover:text-gray-100 hover:bg-dark-hover;
+
+  .metric-tile {
+    @apply rounded-2xl border border-[#1F2937] bg-[#0F1115] px-2 py-2 text-[11px] uppercase tracking-[0.22em];
   }
-  
-  .nav-item.active {
-    @apply text-primary bg-primary/10;
+
+  .focus-button {
+    @apply inline-flex items-center gap-2 rounded-full border border-[#1F2937] bg-[#0B0E14]/80 px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-slate-300 transition duration-200;
   }
-  
-  .glow-danger {
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
-    border-color: #EF4444;
+
+  .focus-button:hover {
+    @apply border-cyan-400 text-cyan-300;
   }
-  
-  .animate-pulse-fast {
-    animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  .risk-ring {
+    animation: ringPulse var(--ring-speed, 3.5s) ease-in-out infinite;
+    transition: border-color 0.35s ease, box-shadow 0.35s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .risk-ring {
+      animation: none !important;
+    }
+  }
+}
+
+@keyframes ringPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.64;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.18;
   }
 }
 
@@ -54,12 +86,12 @@
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0F1115;
+  background: #0B0E14;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2E323D;
-  border-radius: 4px;
+  background: #1F2937;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3B82F6;
+  background: #374151;
 }

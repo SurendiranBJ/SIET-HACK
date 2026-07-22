@@ -6,6 +6,7 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
   const [loading, setLoading] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
   const [activeSnap, setActiveSnap] = useState(null);
+  const [displayRisk, setDisplayRisk] = useState(student?.risk_score || 0);
 
   useEffect(() => {
     if (!student?.student_id) return;
@@ -23,7 +24,26 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
       .catch(() => {});
   }, [student?.student_id, student?.flags?.length]);
 
-  const risk = student.risk_score || 0;
+  // Keep a displayed risk value that prefers the server-updated student.risk_score,
+  // but falls back to the AI explanation percent if the student's score is not yet set.
+  useEffect(() => {
+    const aiPercent = (() => {
+      if (!explanation || !explanation.explanation) return null;
+      const m = explanation.explanation.match(/(\d{1,3})%/);
+      if (m) return parseInt(m[1], 10);
+      return null;
+    })();
+
+    if (student?.risk_score && student.risk_score > 0) {
+      setDisplayRisk(student.risk_score);
+    } else if (aiPercent !== null) {
+      setDisplayRisk(aiPercent);
+    } else {
+      setDisplayRisk(0);
+    }
+  }, [student?.risk_score, explanation]);
+
+  const risk = displayRisk || 0;
   const riskColor = risk >= 60 ? 'text-red-400 bg-red-500/10 border-red-500/20'
     : risk >= 30 ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'
     : 'text-green-400 bg-green-500/10 border-green-500/20';
