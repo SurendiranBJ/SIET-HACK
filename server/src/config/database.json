@@ -92193,6 +92193,14 @@
       "target": "89",
       "detail": "Remote screen unlock triggered",
       "created_at": "2026-07-22T09:54:50.309Z"
+    },
+    {
+      "id": 15,
+      "actor": "admin",
+      "action": "update_rule",
+      "target": "1",
+      "detail": "Rule 1 updated",
+      "created_at": "2026-07-22T10:39:00.055Z"
     }
   ],
   "agent_heartbeats": {
@@ -92259,7 +92267,7 @@
       "id": 1,
       "rule_type": "blacklisted_app",
       "enabled": 1,
-      "threshold_value": "[\"discord\",\"game\",\"cheat\",\"cheatengine\"]",
+      "threshold_value": "youtube, whatsapp, discord, instagram, facebook, chatgpt, claude, perplexity, grok",
       "weight": 30
     },
     {
