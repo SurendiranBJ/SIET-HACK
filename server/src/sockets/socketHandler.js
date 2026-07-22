@@ -60,6 +60,33 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
         ['teacher', 'unlock_screen', student_id, 'Remote screen unlock triggered']);
     });
 
+    // Teacher requests to kick a student (disconnect their agent)
+    socket.on('teacher:kick_student', (data) => {
+      const { student_id } = data;
+      for (const [sid, agent] of Object.entries(connectedAgents)) {
+        if (agent.string_id === student_id) {
+          try {
+            // Notify the agent first; agent will handle graceful shutdown on receipt
+            agentNs.to(sid).emit('command:kickout', { reason: 'Kicked by teacher' });
+          } catch (err) { console.warn('Failed to send kick command to agent', err); }
+
+          // Attempt to forcibly disconnect the socket after notifying
+          try {
+            const targetSocket = agentNs.sockets.get(sid);
+            if (targetSocket) targetSocket.disconnect(true);
+          } catch (err) { console.warn('Failed to forcibly disconnect agent socket', err); }
+
+          // Update in-memory registry and notify dashboards
+          delete connectedAgents[sid];
+          dashboardNs.to('session:active').emit('session:student_left', { student_id });
+          dashboardNs.to('session:active').emit('student:kicked', { student_id });
+          db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+            ['teacher', 'kick_student', student_id, 'Teacher forced disconnect (kick)']);
+          break;
+        }
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log(`Dashboard disconnected: ${socket.id}`);
     });
@@ -106,6 +133,17 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
           hostname,
           ip
         });
+        const rule = await db.get('SELECT enabled, threshold_value FROM rules WHERE rule_type = ?', ['blacklisted_app']);
+        let keywords = [];
+        if (rule && rule.enabled) {
+          try {
+            const parsed = JSON.parse(rule.threshold_value || '[]');
+            keywords = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            keywords = String(rule.threshold_value || '').split(',').map(s => s.trim()).filter(Boolean);
+          }
+        }
+        socket.emit('command:update_blocklist', { keywords });
         console.log(`Agent registered: ${stringId}`);
       } catch(e) {
         console.error('Registration error:', e);
@@ -132,6 +170,39 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
       if (!numId || !stringId) return;
 
       const { mouse_delta, keystroke_count, idle_seconds } = data;
+      // Immediate detection: check for window spike and AI site keywords and notify dashboard/admin right away
+      try {
+        const procString = (Array.isArray(data.processes) ? data.processes.join(' ') : String(data.processes || '')).toLowerCase();
+        const windowTitle = String(data.active_window || '').toLowerCase();
+        const combinedTarget = `${procString} ${windowTitle}`;
+
+        const aiKeywords = ['chatgpt', 'openai', 'gpt', 'instagram', 'bard', 'dalle', 'midjourney', 'perplexity'];
+        for (const kw of aiKeywords) {
+          if (combinedTarget.includes(kw)) {
+            dashboardNs.to('session:active').emit('alert:ai_site', {
+              student_id: stringId,
+              detail: `AI/managed site detected: ${kw}`,
+              timestamp: new Date().toISOString()
+            });
+            // Send immediate blocklist update to the originating agent to attempt blocking the domain/process
+            try {
+              socket.emit('command:update_blocklist', { keywords: [kw] });
+            } catch (err) { console.warn('Failed to send update_blocklist to agent', err); }
+            break;
+          }
+        }
+
+        const window_count = data.window_count || 0;
+        if (window_count > 4) {
+          dashboardNs.to('session:active').emit('alert:window_spike', {
+            student_id: stringId,
+            detail: `Window spike detected: ${window_count} active open windows`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        console.warn('Immediate detection error', e);
+      }
       const typing_speed = keystroke_count || 0;
       const mouseScore = mouse_delta || 0;
       const overall_activity_score = Math.min(100, Math.floor((mouseScore * 0.05) + (typing_speed * 2)));
@@ -170,6 +241,17 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
             severity: 'high',
             timestamp: new Date().toISOString()
           });
+
+          // Explicit admin alert for window spike to ensure urgent visibility
+          if (flag.rule_type === 'window_spike') {
+            try {
+              dashboardNs.to('session:active').emit('alert:window_spike', {
+                student_id: stringId,
+                detail: flag.detail,
+                timestamp: new Date().toISOString()
+              });
+            } catch (err) { console.warn('Failed to emit window_spike alert', err); }
+          }
         }
 
         const newRiskScore = await riskEngine.computeRiskScore(numId, sessionId, db);
