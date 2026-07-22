@@ -13,13 +13,18 @@ export default function SmartClassroomMap({ students, flags }) {
     return 'bg-green-500/10 border-green-500/30 text-green-300';
   };
 
+  const getRiskTag = (risk) => {
+    if (risk >= 60) return 'High';
+    if (risk >= 30) return 'Mod';
+    return 'Safe';
+  };
+
   return (
     <div>
       {focused && (
         <FocusView
           student={focused}
           onClose={() => setFocused(null)}
-          host={window.location.hostname}
         />
       )}
       <div className="flex items-center justify-between mb-6">
@@ -56,10 +61,13 @@ export default function SmartClassroomMap({ students, flags }) {
             <div
               key={student.student_id}
               onClick={() => setFocused(student)}
+              tabIndex={0}
+              aria-label={`Student ${student.student_id}, risk score ${risk} percent, status ${getRiskTag(risk)}`}
               className={`aspect-square rounded-xl border-2 cursor-pointer flex flex-col items-center justify-center gap-1 transition-all hover:scale-105 p-2 ${getRiskBg(risk)}`}
             >
+              <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{getRiskTag(risk)}</div>
               <div className="text-lg font-bold">{risk}%</div>
-              <div className="text-xs text-center truncate w-full text-center opacity-80">{student.student_id}</div>
+              <div className="text-xs text-center truncate w-full opacity-80">{student.student_id}</div>
               {(student.flags?.length || 0) > 0 && (
                 <div className="text-xs bg-red-500/30 px-1.5 py-0.5 rounded-full font-semibold">
                   {student.flags.length}⚠

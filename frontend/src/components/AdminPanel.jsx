@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Users, Wifi, FileText, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { getApiUrl } from '../config';
 
-export default function AdminPanel({ host }) {
+export default function AdminPanel() {
   const [tab, setTab] = useState('rules');
   const [rules, setRules] = useState([]);
   const [students, setStudents] = useState([]);
@@ -10,7 +11,7 @@ export default function AdminPanel({ host }) {
   const [newStudent, setNewStudent] = useState({ student_id: '', name: '' });
   const [loading, setLoading] = useState(false);
 
-  const api = (path) => `http://${host}:3000/api${path}`;
+  const api = (path) => getApiUrl(path);
 
   useEffect(() => {
     fetchAll();

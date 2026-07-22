@@ -5,6 +5,7 @@ const DB_FILE = path.join(__dirname, 'database.json');
 
 class MockDB {
   constructor() {
+    this._saveTimer = null;
     this.data = {
       users: [],
       students: [],
@@ -46,11 +47,15 @@ class MockDB {
   }
 
   save() {
-    try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2));
-    } catch(e) {
-      console.error("Error saving DB file:", e);
-    }
+    if (this._saveTimer) return;
+    this._saveTimer = setTimeout(async () => {
+      this._saveTimer = null;
+      try {
+        await fs.promises.writeFile(DB_FILE, JSON.stringify(this.data, null, 2));
+      } catch(e) {
+        console.error("Error saving DB file:", e);
+      }
+    }, 500);
   }
 
   async run(query, params = []) {

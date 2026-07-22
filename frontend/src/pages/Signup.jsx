@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Shield, Eye, EyeOff, UserSquare2, GraduationCap } from 'lucide-react';
+import { getApiUrl } from '../config';
 
 const Signup = () => {
   const [username, setUsername] = useState('');
@@ -11,14 +12,24 @@ const Signup = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
+  React.useEffect(() => {
+    const userStr = localStorage.getItem('siet_user');
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.role === 'teacher') navigate('/teacher', { replace: true });
+        else if (u.role === 'student') navigate('/student', { replace: true });
+      } catch (_) {}
+    }
+  }, [navigate]);
+
   const handleSignup = async (e) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      const host = window.location.hostname;
-      const res = await fetch(`http://${host}:3000/api/auth/signup`, {
+      const res = await fetch(getApiUrl('/auth/signup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, role })

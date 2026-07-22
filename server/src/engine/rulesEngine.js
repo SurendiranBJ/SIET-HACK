@@ -75,7 +75,15 @@ class RulesEngine {
       rows.forEach(r => {
         let parsed = null;
         if (r.threshold_value) {
-          try { parsed = JSON.parse(r.threshold_value); } catch(e) {}
+          try {
+            parsed = typeof r.threshold_value === 'string' ? JSON.parse(r.threshold_value) : r.threshold_value;
+          } catch(e) {
+            if (typeof r.threshold_value === 'string' && r.threshold_value.includes(',')) {
+              parsed = r.threshold_value.split(',').map(s => s.trim());
+            } else {
+              parsed = r.threshold_value;
+            }
+          }
         }
         this.rules[r.rule_type] = { weight: r.weight, threshold: parsed };
       });
@@ -191,10 +199,20 @@ class RulesEngine {
       });
     }
 
-    if (this.rules['window_spike'] && window_count && window_count > 4 && this.shouldFire(studentId, 'window_spike')) {
+    let windowSpikeThreshold = 4;
+    if (this.rules['window_spike'] && this.rules['window_spike'].threshold_value) {
+      try {
+        const tv = typeof this.rules['window_spike'].threshold_value === 'string' 
+          ? JSON.parse(this.rules['window_spike'].threshold_value) 
+          : this.rules['window_spike'].threshold_value;
+        if (tv && typeof tv.count === 'number') windowSpikeThreshold = tv.count;
+      } catch (e) {}
+    }
+
+    if (this.rules['window_spike'] && window_count && window_count > windowSpikeThreshold && this.shouldFire(studentId, 'window_spike')) {
       flags.push({
         rule_type: 'window_spike',
-        detail: `Window spike detected: ${window_count} active open windows`,
+        detail: `Window spike detected: ${window_count} active open windows (Threshold: >${windowSpikeThreshold})`,
         weight: this.rules['window_spike'].weight || 15
       });
     }

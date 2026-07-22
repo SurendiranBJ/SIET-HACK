@@ -49,19 +49,41 @@ def get_active_window_title():
     except Exception:
         return "Unknown Window"
 
+def get_visible_window_count():
+    try:
+        count = 0
+        def enumHandler(hwnd, ctx):
+            nonlocal count
+            if ctypes.windll.user32.IsWindowVisible(hwnd):
+                length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    count += 1
+            return True
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        cb = EnumWindowsProc(enumHandler)
+        ctypes.windll.user32.EnumWindows(cb, 0)
+        return count
+    except Exception:
+        return 1
+
 def capture_screen():
-    # Capture the primary monitor
-    monitor = sct.monitors[1]
-    sct_img = sct.grab(monitor)
-    img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-    
-    # Throttle/Compress frames: Resize and low JPEG quality to save bandwidth
-    img.thumbnail((800, 600), Image.Resampling.LANCZOS)
-    
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=30, optimize=True)
-    import base64
-    return base64.b64encode(buf.getvalue()).decode('utf-8')
+    try:
+        # Fallback to monitor 1 or first available monitor
+        mon_idx = 1 if len(sct.monitors) > 1 else 0
+        monitor = sct.monitors[mon_idx]
+        sct_img = sct.grab(monitor)
+        img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+        
+        # Throttle/Compress frames: Resize and low JPEG quality to save bandwidth
+        img.thumbnail((800, 600), Image.Resampling.LANCZOS)
+        
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=30, optimize=True)
+        import base64
+        return base64.b64encode(buf.getvalue()).decode('utf-8')
+    except Exception as e:
+        print(f"Screen capture warning: {e}")
+        return ""
 
 @sio.event(namespace='/agent')
 def connect():
@@ -97,10 +119,11 @@ def main_loop():
         try:
             # 1. Capture & send screen
             jpeg_base64 = capture_screen()
-            sio.emit('agent:frame', {
-                'jpeg_base64': jpeg_base64,
-                'timestamp': time.time()
-            }, namespace='/agent')
+            if jpeg_base64:
+                sio.emit('agent:frame', {
+                    'jpeg_base64': jpeg_base64,
+                    'timestamp': time.time()
+                }, namespace='/agent')
             
             # 2. Gather native OS telemetry
             processes = []
@@ -112,7 +135,13 @@ def main_loop():
 
             idle_seconds = get_idle_time()
             active_window = get_active_window_title()
-            num_monitors = len(sct.monitors) - 1 # mss index 0 is all monitors combined
+            
+            try:
+                num_monitors = max(1, len(sct.monitors) - 1)
+            except Exception:
+                num_monitors = 1
+            
+            window_count = get_visible_window_count()
             
             sio.emit('agent:activity', {
                 'mouse_delta': 10,
@@ -121,7 +150,8 @@ def main_loop():
                 'processes': processes,
                 'active_window': active_window,
                 'secondary_monitor': num_monitors > 1,
-                'monitor_count': num_monitors
+                'monitor_count': num_monitors,
+                'window_count': window_count
             }, namespace='/agent')
             
             # Reset cadence counter per window

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { Monitor, AlertTriangle, CheckCircle, FileEdit, Clock, Activity, Zap, Usb, ScreenShare, Cpu, Lock } from 'lucide-react';
+import { getSocketUrl } from '../config';
 
 const StudentPortal = () => {
   const navigate = useNavigate();
@@ -163,8 +164,7 @@ const StudentPortal = () => {
         if (intervalRef.current) clearInterval(intervalRef.current);
       });
 
-      const host = window.location.hostname;
-      const socket = io(`http://${host}:3000/agent`, {
+      const socket = io(getSocketUrl('/agent'), {
         transports: ['websocket'],
         reconnection: true,
         reconnectionDelay: 1000,
@@ -505,9 +505,10 @@ const StudentPortal = () => {
                   {workspaceTab === 'answer' && (
                     <textarea
                       value={examText}
+                      disabled={isLocked}
                       onChange={(e) => setExamText(e.target.value)}
-                      className="w-full h-full min-h-[300px] bg-[#0F1115] border border-white/10 rounded-xl p-4 text-white/80 focus:outline-none focus:border-blue-500/50 resize-none leading-relaxed font-sans text-sm"
-                      placeholder="Type your exam answers here..."
+                      className="w-full h-full min-h-[300px] bg-[#0F1115] border border-white/10 rounded-xl p-4 text-white/80 focus:outline-none focus:border-blue-500/50 resize-none leading-relaxed font-sans text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      placeholder={isLocked ? "Workstation locked by faculty..." : "Type your exam answers here..."}
                     />
                   )}
 

@@ -1,15 +1,35 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const aiEngine = require('../engine/aiEngine');
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedPassword) {
+  if (!storedPassword) return false;
+  if (!storedPassword.includes(':')) {
+    // Backward compatibility for existing plaintext mock records
+    return password === storedPassword;
+  }
+  const [salt, originalHash] = storedPassword.split(':');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return hash === originalHash;
+}
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 router.post('/auth/signup', async (req, res) => {
   const { db } = req;
   const { username, password, role } = req.body;
   try {
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
     const existing = await db.get('SELECT * FROM users WHERE username = ?', [username]);
     if (existing) return res.status(400).json({ error: 'Username already exists' });
-    await db.run('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, password, role || 'student']);
+    const hashedPassword = hashPassword(password);
+    await db.run('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, hashedPassword, role || 'student']);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -18,8 +38,9 @@ router.post('/auth/login', async (req, res) => {
   const { db } = req;
   const { username, password } = req.body;
   try {
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
     const user = await db.get('SELECT * FROM users WHERE username = ?', [username]);
-    if (!user || user.password !== password) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user || !verifyPassword(password, user.password)) return res.status(401).json({ error: 'Invalid credentials' });
     res.json({ success: true, user: { id: user.id, username: user.username, role: user.role } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { Shield, LayoutGrid, Activity, MapPin, Settings, Lock, FileText, Search, X, Download } from 'lucide-react';
+import { getApiUrl, getSocketUrl } from '../config';
 
 import LiveGrid from '../components/LiveGrid';
 import ActivityHeatmap from '../components/ActivityHeatmap';
@@ -22,10 +23,9 @@ const TeacherDashboard = () => {
 
   const userStr = localStorage.getItem('siet_user');
   const user = userStr ? JSON.parse(userStr) : { username: 'Teacher' };
-  const host = window.location.hostname;
 
   useEffect(() => {
-    const SERVER_URL = `http://${host}:3000/dashboard`;
+    const SERVER_URL = getSocketUrl('/dashboard');
     const s = io(SERVER_URL, { reconnection: true, reconnectionDelay: 2000, reconnectionAttempts: Infinity });
     socketRef.current = s;
 
@@ -100,14 +100,9 @@ const TeacherDashboard = () => {
     return () => s.disconnect();
   }, []);
 
-  // Only display students who are CURRENTLY connected and actively streaming screen frames
+  // Display all currently connected students
   const allStudents = Object.values(students);
   const filteredStudents = allStudents.filter(s => {
-    // Must be actively streaming screen frames right now (latestFrame must exist and be non-empty)
-    if (!s.latestFrame || typeof s.latestFrame !== 'string' || s.latestFrame.trim() === '') {
-      return false;
-    }
-
     const q = searchQuery.toLowerCase();
     const matchesSearch = !q ||
       (s.student_id || '').toLowerCase().includes(q) ||
@@ -134,7 +129,7 @@ const TeacherDashboard = () => {
   };
 
   const handleExport = async () => {
-    const url = `http://${host}:3000/api/session/export`;
+    const url = getApiUrl('/session/export');
     const res = await fetch(url);
     const blob = await res.blob();
     const a = document.createElement('a');
@@ -146,7 +141,7 @@ const TeacherDashboard = () => {
   const handleSessionSummary = async () => {
     setLoadingSummary(true);
     try {
-      const res = await fetch(`http://${host}:3000/api/session/summary`);
+      const res = await fetch(getApiUrl('/session/summary'));
       const data = await res.json();
       setSessionSummary(data);
       setActiveTab('summary');
@@ -265,11 +260,11 @@ const TeacherDashboard = () => {
       {/* ── MAIN CONTENT ── */}
       <main className="flex-1 p-6 overflow-auto">
         {activeTab === 'grid' && (
-          <LiveGrid students={filteredStudents} flags={flags} onLockScreen={handleLockScreen} onUnlockScreen={handleUnlockScreen} socket={socketRef.current} host={host} />
+          <LiveGrid students={filteredStudents} flags={flags} onLockScreen={handleLockScreen} onUnlockScreen={handleUnlockScreen} socket={socketRef.current} />
         )}
         {activeTab === 'heatmap' && <ActivityHeatmap students={filteredStudents} />}
         {activeTab === 'map' && <SmartClassroomMap students={filteredStudents} flags={flags} />}
-        {activeTab === 'admin' && <AdminPanel host={host} />}
+        {activeTab === 'admin' && <AdminPanel />}
         {activeTab === 'privacy' && <PrivacyDashboard />}
         {activeTab === 'summary' && sessionSummary && (
           <SessionSummaryView summary={sessionSummary} onExport={handleExport} />

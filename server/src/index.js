@@ -30,9 +30,6 @@ async function startServer() {
     next();
   });
 
-  // API Routes
-  app.use('/api', apiRoutes);
-
   // Socket.io namespaces
   const agentNs = io.of('/agent');
   const dashboardNs = io.of('/dashboard');
@@ -44,6 +41,9 @@ async function startServer() {
     req.connectedAgents = connectedAgents;
     next();
   });
+
+  // API Routes
+  app.use('/api', apiRoutes);
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
