@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-bg text-gray-200 font-sans antialiased;
+    margin: 0;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-dark-panel border border-dark-border rounded-xl shadow-lg backdrop-blur-md;
+  }
+  
+  .glass-card {
+    @apply bg-dark-panel/80 border border-dark-border rounded-lg shadow-sm transition-all duration-300;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-blue-600 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)];
+  }
+  
+  .btn-danger {
+    @apply bg-danger text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-red-600 hover:shadow-[0_0_15px_rgba(239,68,68,0.4)];
+  }
+
+  .btn-secondary {
+    @apply bg-dark-hover text-gray-200 border border-dark-border px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-gray-700;
+  }
+  
+  .nav-item {
+    @apply px-4 py-2 text-gray-400 font-medium rounded-lg transition-colors cursor-pointer hover:text-gray-100 hover:bg-dark-hover;
+  }
+  
+  .nav-item.active {
+    @apply text-primary bg-primary/10;
+  }
+  
+  .glow-danger {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+    border-color: #EF4444;
+  }
+  
+  .animate-pulse-fast {
+    animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0F1115;
+}
+::-webkit-scrollbar-thumb {
+  background: #2E323D;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3B82F6;
+}
