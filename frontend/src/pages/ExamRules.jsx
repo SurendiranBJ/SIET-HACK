@@ -62,7 +62,7 @@ const ExamRules = () => {
             <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">SIET Overwatch</p>
+            <p className="text-sm font-semibold text-white">Exam Safe</p>
             <p className="text-[10px] text-blue-400/70 uppercase tracking-wider">Exam Session Gateway</p>
           </div>
         </div>
@@ -129,7 +129,7 @@ const ExamRules = () => {
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-300/80 leading-relaxed">
               <strong className="text-amber-400">Important:</strong> Your screen is being recorded, your active window title is monitored in real-time, 
-              and any connected USB devices or secondary monitors will trigger an immediate alert to your examiner. 
+              and any connected USB devices or unauthorized applications will trigger an immediate alert to your examiner. 
               Attempting to close the monitoring agent will also create a critical incident report.
             </p>
           </div>

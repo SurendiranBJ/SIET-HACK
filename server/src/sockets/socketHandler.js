@@ -63,39 +63,25 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
         ['teacher', 'unlock_screen', student_id, 'Remote screen unlock triggered']);
     });
 
-    // Teacher requests to kick a student (disconnect their agent)
+    // Teacher kicks student from current exam session
     socket.on('teacher:kick_student', (data) => {
       const { student_id } = data;
-      // optional duration in minutes (defaults to 5)
-      const durationMinutes = Number(data?.duration_minutes || 5);
-      const expiry = Date.now() + Math.max(1, durationMinutes) * 60 * 1000;
       for (const [sid, agent] of Object.entries(connectedAgents)) {
         if (agent.string_id === student_id) {
           try {
-            // mark temporarily banned to prevent immediate reconnects
-            bannedStudents[String(student_id)] = expiry;
-          } catch (e) { console.warn('failed to set ban', e); }
-
-          try {
-            // Notify the agent first; agent will handle graceful shutdown on receipt
-            agentNs.to(sid).emit('command:kickout', { reason: 'Kicked by teacher' });
+            agentNs.to(sid).emit('command:kick', { message: 'You have been kicked out of the current exam session.' });
           } catch (err) { console.warn('Failed to send kick command to agent', err); }
-
-          // Attempt to forcibly disconnect the socket after notifying
           try {
             const targetSocket = agentNs.sockets.get(sid);
             if (targetSocket) targetSocket.disconnect(true);
-          } catch (err) { console.warn('Failed to forcibly disconnect agent socket', err); }
-
-          // Update in-memory registry and notify dashboards (include ban expiry)
+          } catch (err) { console.warn('Failed to disconnect socket', err); }
           delete connectedAgents[sid];
           dashboardNs.to('session:active').emit('session:student_left', { student_id });
-          dashboardNs.to('session:active').emit('student:kicked', { student_id, banned_until: new Date(expiry).toISOString() });
-          db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
-            ['teacher', 'kick_student', student_id, `Teacher forced disconnect (kick). Banned until ${new Date(expiry).toISOString()}`]);
           break;
         }
       }
+      db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+        ['teacher', 'kick_student', student_id, 'Student kicked from current exam session']);
     });
 
     socket.on('disconnect', () => {
@@ -114,19 +100,6 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
     // Registration
     socket.on('agent:register', async (data) => {
       const { student_id, hostname, ip, mac } = data;
-      // Reject registration if student is temporarily banned
-      try {
-        const banExpiry = bannedStudents[String(student_id)];
-        if (banExpiry && Date.now() < banExpiry) {
-          // Notify dashboard that banned agent attempted reconnect
-          dashboardNs.to('session:active').emit('session:ban_attempt', { student_id, banned_until: new Date(banExpiry).toISOString() });
-          // Instruct agent to disconnect and refuse registration
-          try { socket.emit('command:kickout', { reason: 'You are temporarily banned by instructor' }); } catch (e) { }
-          try { socket.disconnect(true); } catch (e) { }
-          try { await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)', ['system', 'ban_block_reject', student_id, `Rejected registration while banned until ${new Date(banExpiry).toISOString()}`]); } catch (e) { }
-          return;
-        }
-      } catch (e) { console.warn('ban check failed', e); }
 
       try {
         await db.run(

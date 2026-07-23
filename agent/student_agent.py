@@ -153,11 +153,21 @@ def on_warn(data):
 
 @sio.on("command:lock_screen", namespace="/agent")
 def on_lock(data=None):
-    print("[AGENT] 🔒 Screen locked by teacher.")
+    print("[AGENT] 🔒 Exam session locked by teacher/proctor.")
 
 @sio.on("command:unlock_screen", namespace="/agent")
 def on_unlock(data=None):
-    print("[AGENT] 🔓 Screen unlocked by teacher.")
+    print("[AGENT] 🔓 Exam session unlocked by teacher/proctor.")
+
+@sio.on("command:kick", namespace="/agent")
+def on_kick(data=None):
+    msg = data.get('message', 'Kicked from exam session.') if isinstance(data, dict) else 'Kicked from exam session.'
+    print(f"\n[⛔ TEACHER/ADMIN REMOVAL] {msg}\n")
+    try:
+        sio.disconnect()
+    except Exception:
+        pass
+    os._exit(0)
 
 # ─── Main monitoring loop ─────────────────────────────────────────────────────
 def main_loop():

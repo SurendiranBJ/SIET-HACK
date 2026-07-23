@@ -38,7 +38,7 @@ const StudentPortal = () => {
   const sharingStartTimeRef = useRef(0);
 
   // Advanced signal simulation refs
-  const activeWindowRef = useRef('Exam Portal - SIET');
+  const activeWindowRef = useRef('Exam Portal - Exam Safe');
   const extraProcessesRef = useRef([]);
   const secondaryMonitorRef = useRef(false);
   const usbDetectedRef = useRef(false);
@@ -70,7 +70,7 @@ const StudentPortal = () => {
         tabSwitchCountRef.current += 1;
         activeWindowRef.current = 'Other Browser Tab';
       } else {
-        activeWindowRef.current = 'Exam Portal - SIET';
+        activeWindowRef.current = 'Exam Portal - Exam Safe';
       }
     };
 
@@ -118,7 +118,7 @@ const StudentPortal = () => {
     } else if (signalType === 'idle') {
       lastActivityRef.current = Date.now() - 35000; // Force 35s idle
     } else if (signalType === 'normal') {
-      activeWindowRef.current = 'Exam Portal - SIET';
+      activeWindowRef.current = 'Exam Portal - Exam Safe';
       extraProcessesRef.current = [];
       usbDetectedRef.current = false;
       secondaryMonitorRef.current = false;
@@ -322,7 +322,7 @@ const StudentPortal = () => {
         <header className="flex justify-between items-center mb-8 border-b border-white/10 pb-6">
           <div>
             <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-              SIET Student Examination Portal
+              Exam Safe Student Portal
             </h1>
             <p className="text-white/40 mt-1">Logged in as <strong className="text-white">{user.username}</strong></p>
           </div>
@@ -578,65 +578,6 @@ const StudentPortal = () => {
                   )}
                 </div>
               </div>
-
-              {/* Quick Simulation Triggers for Evaluation & Testing */}
-              <div className="bg-[#1A1D24] border border-purple-500/20 rounded-2xl p-5 shadow-[0_0_20px_rgba(168,85,247,0.05)]">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400 mb-3 flex items-center gap-2">
-                  <Zap className="w-4 h-4" /> Live Rule Testing Controls (Simulate Signals)
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    onClick={() => triggerSignal('chatgpt')}
-                    className="px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-xs font-medium border border-purple-500/30 text-left transition-all"
-                  >
-                    🤖 ChatGPT / Banned Keyword
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('anydesk')}
-                    className="px-3 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-xl text-xs font-medium border border-red-500/30 text-left transition-all"
-                  >
-                    🖥️ AnyDesk / RAT Process
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('usb')}
-                    className="px-3 py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-xl text-xs font-medium border border-yellow-500/30 text-left transition-all"
-                  >
-                    🔌 USB Drive Connected
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('monitor')}
-                    className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-xs font-medium border border-blue-500/30 text-left transition-all"
-                  >
-                    📺 Secondary Display
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('spike')}
-                    className="px-3 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 rounded-xl text-xs font-medium border border-cyan-500/30 text-left transition-all"
-                  >
-                    📈 Window Count Spike
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('paste')}
-                    className="px-3 py-2 bg-pink-600/20 hover:bg-pink-600/30 text-pink-300 rounded-xl text-xs font-medium border border-pink-500/30 text-left transition-all"
-                  >
-                    📋 External Copy &amp; Paste (450 chars)
-                  </button>
-                  <button
-                    onClick={() => triggerSignal('idle')}
-                    className="px-3 py-2 bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 rounded-xl text-xs font-medium border border-orange-500/30 text-left transition-all"
-                  >
-                    💤 Idle Timeout (35s)
-                  </button>
-                </div>
-                <div className="mt-3 text-right">
-                  <button
-                    onClick={() => triggerSignal('normal')}
-                    className="text-xs text-white/40 hover:text-white underline transition-colors"
-                  >
-                    Reset all test signals to Normal
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* Status Panel */}
@@ -693,6 +634,25 @@ const StudentPortal = () => {
           </div>
         )}
       </div>
+
+      {/* Impenetrable Proctor Lock Overlay */}
+      {isLocked && (
+        <div className="fixed inset-0 z-[99999] bg-[#080B10]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none">
+          <div className="w-20 h-20 bg-red-500/20 border-2 border-red-500 rounded-3xl flex items-center justify-center mb-6 animate-bounce shadow-[0_0_50px_rgba(239,68,68,0.3)]">
+            <Lock className="w-10 h-10 text-red-500" />
+          </div>
+          <h1 className="text-3xl font-extrabold text-white mb-2">EXAM SESSION LOCKED</h1>
+          <p className="text-red-400 text-lg font-medium mb-4">Your exam interface has been locked by the proctor.</p>
+          <div className="bg-[#14171F] border border-white/10 rounded-2xl p-6 max-w-md text-sm text-white/60 space-y-2 mb-6">
+            <p>• All exam inputs and navigation are currently disabled.</p>
+            <p>• Please wait for your instructor/proctor to inspect your session and unlock your screen.</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-white/40 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span>Student Candidate: {user?.username} · Locked State Active</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

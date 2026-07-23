@@ -94,7 +94,7 @@ export default function AdminPanel() {
       {/* ── RULE CONFIG ── */}
       {tab === 'rules' && (
         <div className="space-y-3">
-          {rules.map(rule => {
+          {rules.filter(r => r.rule_type !== 'secondary_monitor' && r.rule_type !== 'remote_access_tool').map(rule => {
             let threshold = '';
             try { threshold = JSON.stringify(rule.threshold_value ? JSON.parse(rule.threshold_value) : ''); } catch { threshold = rule.threshold_value || ''; }
             return (

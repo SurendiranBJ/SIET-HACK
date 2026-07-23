@@ -56,7 +56,7 @@ export default function PrivacyDashboard() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">Privacy Safeguards</h2>
-            <p className="text-white/40 text-sm">SIET Overwatch is designed with privacy-first principles</p>
+            <p className="text-white/40 text-sm">Exam Safe is designed with privacy-first principles</p>
           </div>
         </div>
         <p className="text-white/60 leading-relaxed">

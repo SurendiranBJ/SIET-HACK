@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, ShieldAlert, Monitor, TerminalSquare, Camera, Lock, Clock, TrendingUp, AlertTriangle, CheckCircle, MessageSquare, BarChart2 } from 'lucide-react';
+import { X, ShieldAlert, Monitor, TerminalSquare, Camera, Lock, Clock, TrendingUp, AlertTriangle, CheckCircle, MessageSquare, BarChart2, UserX } from 'lucide-react';
 import { getApiUrl } from '../config';
 
 const safeString = (val, fallback = '') => {
@@ -20,9 +20,7 @@ const RULE_COLORS = {
   window_spike: 'text-cyan-400',
   idle_timeout: 'text-yellow-400',
   usb_detected: 'text-pink-400',
-  secondary_monitor: 'text-blue-400',
   large_clipboard_paste: 'text-purple-400',
-  remote_access_tool: 'text-red-500',
   statistical_anomaly: 'text-amber-400',
 };
 
@@ -32,7 +30,7 @@ function RiskBreakdown({ flags }) {
 
   // Group by rule_type and sum weights
   const breakdown = {};
-  flags.forEach(f => {
+  flags.filter(f => f.rule_type !== 'secondary_monitor' && f.rule_type !== 'remote_access_tool').forEach(f => {
     const key = f.rule_type || 'unknown';
     if (!breakdown[key]) breakdown[key] = { label: formatRule(key), total: 0, count: 0 };
     breakdown[key].total += (f.risk_score_delta || f.weight || 10);
@@ -300,7 +298,7 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
 
   if (!student) return null;
 
-  const allFlags = Array.isArray(student.flags) ? student.flags : [];
+  const allFlags = (Array.isArray(student.flags) ? student.flags : []).filter(f => f.rule_type !== 'secondary_monitor' && f.rule_type !== 'remote_access_tool');
   const studentFlags = allFlags.filter(f => !dismissedIds.has(f.id));
   const risk = typeof student.risk_score === 'number' ? student.risk_score : 0;
   const riskColor =
@@ -382,6 +380,22 @@ export default function FocusView({ student, onClose, onLockScreen, onUnlockScre
                 <Lock className="w-4 h-4" /> Lock Screen
               </button>
             )}
+
+            {/* Kick Out */}
+            <button
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to kick ${student.name || student.student_id} out of the exam session?`)) {
+                  if (socket) {
+                    socket.emit('teacher:kick_student', { student_id: student.student_id });
+                    setActionFeedback(`Student ${student.student_id} has been kicked from the exam.`);
+                    if (onClose) onClose();
+                  }
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl text-sm border border-red-500/30 transition-all font-bold"
+            >
+              <UserX className="w-4 h-4" /> Kick Out
+            </button>
 
             <button
               onClick={() => onClose && onClose()}

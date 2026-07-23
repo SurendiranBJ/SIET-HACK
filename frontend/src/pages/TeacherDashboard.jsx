@@ -156,7 +156,7 @@ const TeacherDashboard = () => {
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'siet_session_report.json';
+    a.download = 'exam_safe_session_report.json';
     a.click();
   };
 
@@ -191,8 +191,8 @@ const TeacherDashboard = () => {
             <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white">SIET Overwatch</h1>
-            <p className="text-xs text-blue-400 font-medium">Smart Classroom Monitoring</p>
+            <h1 className="text-lg font-bold text-white">Exam Safe</h1>
+            <p className="text-xs text-blue-400 font-medium">Smart Proctoring Workspace</p>
           </div>
         </div>
 
