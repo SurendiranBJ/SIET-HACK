@@ -63,12 +63,22 @@ class MockDB {
 
     if (q.includes('INSERT INTO USERS')) {
       this.data.users.push({
-        id: this.data.users.length + 1,
+        id: this.data.users.length > 0 ? Math.max(...this.data.users.map(u => u.id)) + 1 : 1,
         username: params[0],
         password: params[1],
         role: params[2],
+        blocked: false,
         created_at: new Date().toISOString()
       });
+      this.save();
+
+    } else if (q.includes('DELETE FROM USERS')) {
+      this.data.users = this.data.users.filter(u => u.id != params[0]);
+      this.save();
+
+    } else if (q.includes('UPDATE USERS SET BLOCKED')) {
+      const user = this.data.users.find(u => u.id == params[1]);
+      if (user) user.blocked = params[0];
       this.save();
 
     } else if (q.includes('INSERT INTO STUDENTS')) {
@@ -183,7 +193,7 @@ class MockDB {
     if (q.includes('FROM STUDENTS WHERE STUDENT_ID')) {
       return this.data.students.find(s => s.student_id === params[0]) || null;
     } else if (q.includes('FROM USERS WHERE USERNAME')) {
-      return this.data.users.find(u => u.username === params[0]) || null;
+      return this.data.users.find(u => u.username.toLowerCase() === (params[0] || '').toLowerCase()) || null;
     } else if (q.includes('FROM SESSIONS WHERE')) {
       return this.data.sessions.find(s => s.id == params[0]) || null;
     }
@@ -223,7 +233,7 @@ class MockDB {
     } else if (q.includes('FROM AUDIT_LOG')) {
       return this.data.audit_log.slice(-200).reverse();
     } else if (q.includes('FROM USERS')) {
-      return this.data.users.map(u => ({ id: u.id, username: u.username, role: u.role, created_at: u.created_at }));
+      return this.data.users.map(u => ({ id: u.id, username: u.username, role: u.role, blocked: u.blocked || false, created_at: u.created_at }));
     }
     return [];
   }

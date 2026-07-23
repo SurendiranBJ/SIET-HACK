@@ -1,0 +1,216 @@
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Added teacher:warn_student socket event that sends a real-time warning popup to the student's exam browser.",
+  "EndLine": 65,
+  "Instruction": "Add teacher:warn_student socket event in the dashboard namespace block, before the disconnect handler.",
+  "ReplacementContent": "    // Teacher sends a live warning message to a specific student's screen\n    socket.on('teacher:warn_student', (data) => {\n      const { student_id, message } = data;\n      for (const [sid, agent] of Object.entries(connectedAgents)) {\n        if (agent.string_id === student_id) {\n          agentNs.to(sid).emit('command:warn', { message: message || 'Your exam is being monitored. Please focus.' });\n          break;\n        }\n      }\n      // Also broadcast to browser-based students via dashboard namespace\n      dashboardNs.to('session:active').emit('student:warned', { student_id, message });\n      db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',\n        ['teacher', 'warn_student', student_id, `Warning sent: ${message}`]);\n    });\n\n    socket.on('disconnect', () => {\n      console.log(`Dashboard disconnected: ${socket.id}`);\n    });",
+  "StartLine": 63,
+  "TargetContent": "    socket.on('disconnect', () => {\n      console.log(`Dashboard disconnected: ${socket.id}`);\n    });",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Adding warn_student socket event",
+  "toolSummary": "Add warn student socket event"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Add teacher:warn_student socket event back after merge removed it.",
+  "EndLine": 101,
+  "Instruction": "Add teacher:warn_student event before the disconnect handler.",
+  "ReplacementContent": "    // Teacher sends a live warning message to a specific student's screen\n    socket.on('teacher:warn_student', (data) => {\n      const { student_id, message } = data;\n      for (const [sid, agent] of Object.entries(connectedAgents)) {\n        if (agent.string_id === student_id) {\n          agentNs.to(sid).emit('command:warn', { message: message || 'Your exam is being monitored. Please focus.' });\n          break;\n        }\n      }\n      dashboardNs.to('session:active').emit('student:warned', { student_id, message });\n      db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',\n        ['teacher', 'warn_student', student_id, `Warning sent: ${message}`]);\n    });\n\n    socket.on('disconnect', () => {\n",
+  "StartLine": 100,
+  "TargetContent": "    socket.on('disconnect', () => {\n",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Adding warn_student socket event back",
+  "toolSummary": "Add warn_student event"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Add telemetry_event listener to backend socketHandler to accept the new native OS agent USB polling events exactly as expected by the user's snippet.",
+  "EndLine": 318,
+  "Instruction": "Insert socket.on('telemetry_event') before socket.on('disconnect')",
+  "ReplacementContent": "    // Heartbeat ping\n    socket.on('agent:ping', () => {\n      if (connectedAgents[socket.id]) {\n        connectedAgents[socket.id].last_seen = Date.now();\n        connectedAgents[socket.id].status = 'online';\n      }\n    });\n\n    // Discrete Telemetry Events (e.g. from Python agent win32api USB watcher)\n    socket.on('telemetry_event', async (data) => {\n      if (!numId || !stringId) return;\n      const { rule, drive } = data;\n      const riskDelta = rule === 'usb_storage_inserted' ? 15 : 10;\n      const detail = rule === 'usb_storage_inserted' ? `USB storage drive inserted: ${drive}` : `USB storage drive removed: ${drive}`;\n      \n      try {\n        await db.run(\n          `INSERT INTO flags (session_id, student_id, rule_type, detail, severity, risk_score_delta) VALUES (?, ?, ?, ?, ?, ?)`,\n          [sessionId, numId, rule, detail, 'high', riskDelta]\n        );\n\n        // Snapshot capture\n        const latestFrame = connectedAgents[socket.id]?.last_frame;\n        if (latestFrame) {\n          await db.run(\n            `INSERT INTO snapshots (student_id, session_id, jpeg_base64) VALUES (?, ?, ?)`,\n            [stringId, sessionId, latestFrame]\n          );\n        }\n\n        dashboardNs.to('session:active').emit('flag:new', {\n          student_id: stringId,\n          rule_type: rule,\n          detail: detail,\n          severity: 'high',\n          timestamp: new Date().toISOString()\n        });\n        \n        // Update Risk score directly\n        const stats = await db.get(`SELECT SUM(risk_score_delta) as score FROM flags WHERE student_id = ?`, [numId]);\n        dashboardNs.to('session:active').emit('risk:update', {\n          student_id: stringId,\n          risk_score: Math.min(100, stats.score || 0)\n        });\n      } catch (e) {\n        console.error(\"Error processing telemetry_event\", e);\n      }\n    });",
+  "StartLine": 311,
+  "TargetContent": "    // Heartbeat ping\n    socket.on('agent:ping', () => {\n      if (connectedAgents[socket.id]) {\n        connectedAgents[socket.id].last_seen = Date.now();\n        connectedAgents[socket.id].status = 'online';\n      }\n    });",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Adding telemetry_event support to socketHandler",
+  "toolSummary": "Update socketHandler.js"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Forward native OS telemetry (active window, processes, window count, monitor count, USB status) to the frontend in real-time.",
+  "EndLine": 309,
+  "Instruction": "Update the activity:update emit in socketHandler.js to include native OS fields",
+  "ReplacementContent": "      dashboardNs.to('session:active').emit('activity:update', {\n        student_id: stringId,\n        activity_score: overall_activity_score,\n        typing_speed,\n        idle_seconds: idle_seconds || 0,\n        mouse_score: mouseScore,\n        active_window: data.active_window || '',\n        window_count: data.window_count || 1,\n        monitor_count: data.monitor_count || 1,\n        usb_detected: data.usb_detected || false,\n        usb_events: data.usb_events || [],\n        processes: data.processes || []\n      });\n    });",
+  "StartLine": 302,
+  "TargetContent": "      dashboardNs.to('session:active').emit('activity:update', {\n        student_id: stringId,\n        activity_score: overall_activity_score,\n        typing_speed,\n        idle_seconds: idle_seconds || 0,\n        mouse_score: mouseScore\n      });\n    });",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Updating backend to forward native OS stats to dashboard",
+  "toolSummary": "Update socketHandler.js activity:update"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Update backend to only display students on the Teacher Dashboard if they are actively logged into the Student Portal website.",
+  "EndLine": 141,
+  "Instruction": "Add activeWebSessions tracking to socketHandler.js",
+  "ReplacementContent": "    // Registration\n    socket.on('agent:register', async (data) => {\n      const { student_id, hostname, ip, mac } = data;\n      // Reject registration if student is temporarily banned\n      try {\n        const banExpiry = bannedStudents[String(student_id)];\n        if (banExpiry && Date.now() < banExpiry) {\n          // Notify dashboard that banned agent attempted reconnect\n          dashboardNs.to('session:active').emit('session:ban_attempt', { student_id, banned_until: new Date(banExpiry).toISOString() });\n          // Instruct agent to disconnect and refuse registration\n          try { socket.emit('command:kickout', { reason: 'You are temporarily banned by instructor' }); } catch (e) { }\n          try { socket.disconnect(true); } catch (e) { }\n          try { await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)', ['system', 'ban_block_reject', student_id, `Rejected registration while banned until ${new Date(banExpiry).toISOString()}`]); } catch (e) { }\n          return;\n        }\n      } catch (e) { console.warn('ban check failed', e); }\n\n      try {\n        await db.run(\n          `INSERT INTO students (student_id, name, hostname, ip_address, mac_address) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET hostname=?, ip_address=?, mac_address=?`,\n          [student_id, `Student ${student_id}`, hostname, ip, mac, hostname, ip, mac]\n        );\n\n        const student = await db.get(`SELECT id, student_id FROM students WHERE student_id = ?`, [student_id]);\n        numId = student.id;\n        stringId = student.student_id;\n\n        connectedAgents[socket.id] = {\n          string_id: stringId,\n          num_id: numId,\n          name: `Student ${stringId}`,\n          hostname,\n          ip,\n          last_seen: Date.now(),\n          status: 'online',\n          is_web: (ip === 'Web-Client')\n        };",
+  "StartLine": 113,
+  "TargetContent": "    // Registration\n    socket.on('agent:register', async (data) => {\n      const { student_id, hostname, ip, mac } = data;\n      // Reject registration if student is temporarily banned\n      try {\n        const banExpiry = bannedStudents[String(student_id)];\n        if (banExpiry && Date.now() < banExpiry) {\n          // Notify dashboard that banned agent attempted reconnect\n          dashboardNs.to('session:active').emit('session:ban_attempt', { student_id, banned_until: new Date(banExpiry).toISOString() });\n          // Instruct agent to disconnect and refuse registration\n          try { socket.emit('command:kickout', { reason: 'You are temporarily banned by instructor' }); } catch (e) { }\n          try { socket.disconnect(true); } catch (e) { }\n          try { await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)', ['system', 'ban_block_reject', student_id, `Rejected registration while banned until ${new Date(banExpiry).toISOString()}`]); } catch (e) { }\n          return;\n        }\n      } catch (e) { console.warn('ban check failed', e); }\n\n      try {\n        await db.run(\n          `INSERT INTO students (student_id, name, hostname, ip_address, mac_address) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET hostname=?, ip_address=?, mac_address=?`,\n          [student_id, `Student ${student_id}`, hostname, ip, mac, hostname, ip, mac]\n        );\n\n        const student = await db.get(`SELECT id, student_id FROM students WHERE student_id = ?`, [student_id]);\n        numId = student.id;\n        stringId = student.student_id;\n\n        connectedAgents[socket.id] = {\n          string_id: stringId,\n          num_id: numId,\n          name: `Student ${stringId}`,\n          hostname,\n          ip,\n          last_seen: Date.now(),\n          status: 'online'\n        };",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Adding is_web tracking to agents in socketHandler",
+  "toolSummary": "Update socketHandler.js registration"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Ensure telemetry and screens are only broadcast to the dashboard when the student has an active web login session.",
+  "EndLine": 148,
+  "Instruction": "Track activeWebSessions in socketHandler.js and prevent telemetry broadcast without it.",
+  "ReplacementContent": "      try {\n        await db.run(\n          `INSERT INTO students (student_id, name, hostname, ip_address, mac_address) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET hostname=?, ip_address=?, mac_address=?`,\n          [student_id, `Student ${student_id}`, hostname, ip, mac, hostname, ip, mac]\n        );\n\n        const student = await db.get(`SELECT id, student_id FROM students WHERE student_id = ?`, [student_id]);\n        numId = student.id;\n        stringId = student.student_id;\n\n        const isWeb = (ip === 'Web-Client');\n        connectedAgents[socket.id] = {\n          string_id: stringId,\n          num_id: numId,\n          name: `Student ${stringId}`,\n          hostname,\n          ip,\n          last_seen: Date.now(),\n          status: 'online',\n          is_web: isWeb\n        };\n\n        if (isWeb) {\n          socket.is_web_client = true;\n          activeWebSessions.add(stringId);\n          dashboardNs.to('session:active').emit('agent:joined', {\n            student_id: stringId,\n            hostname,\n            ip\n          });\n        } else if (activeWebSessions.has(stringId)) {\n          // If a desktop agent joins while web is already active, notify dashboard\n          dashboardNs.to('session:active').emit('agent:joined', {\n            student_id: stringId,\n            hostname,\n            ip\n          });\n        }\n\n        // Update heartbeat",
+  "StartLine": 130,
+  "TargetContent": "      try {\n        await db.run(\n          `INSERT INTO students (student_id, name, hostname, ip_address, mac_address) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET hostname=?, ip_address=?, mac_address=?`,\n          [student_id, `Student ${student_id}`, hostname, ip, mac, hostname, ip, mac]\n        );\n\n        const student = await db.get(`SELECT id, student_id FROM students WHERE student_id = ?`, [student_id]);\n        numId = student.id;\n        stringId = student.student_id;\n\n        connectedAgents[socket.id] = {\n          string_id: stringId,\n          num_id: numId,\n          name: `Student ${stringId}`,\n          hostname,\n          ip,\n          last_seen: Date.now(),\n          status: 'online',\n          is_web: (ip === 'Web-Client')\n        };\n\n        // Update heartbeat",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Adding logic to emit agent:joined only for active web sessions",
+  "toolSummary": "Update socketHandler.js registration flow"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Initialize activeWebSessions Set to track web client logins",
+  "EndLine": 10,
+  "Instruction": "Add activeWebSessions to the top of socketHandler.js",
+  "ReplacementContent": "  // In-memory registry: socket.id -> { student_id(string), student_id_num, name, last_frame }\n  const connectedAgents = {};\n  // In-memory ban registry: student_id -> expiryTimestamp (ms)\n  const bannedStudents = {};\n  // Track active web client logins\n  const activeWebSessions = new Set();",
+  "StartLine": 6,
+  "TargetContent": "  // In-memory registry: socket.id -> { student_id(string), student_id_num, name, last_frame }\n  const connectedAgents = {};\n  // In-memory ban registry: student_id -> expiryTimestamp (ms)\n  const bannedStudents = {};",
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Adding activeWebSessions to the top of socketHandler.js",
+  "toolSummary": "Initialize activeWebSessions"
+}
+--- FOUND MODIFICATION ---
+{
+  "Description": "Prevent the Teacher Dashboard from showing screens or telemetry unless the student has an active web login session.",
+  "Instruction": "Update agent:frame, agent:activity and disconnect to check and modify activeWebSessions",
+  "ReplacementChunks": [
+    {
+      "AllowMultiple": false,
+      "EndLine": 204,
+      "ReplacementContent": "    // Screen Frame\n    socket.on('agent:frame', (data) => {\n      if (!stringId) return;\n      if (!activeWebSessions.has(stringId)) return; // DO NOT broadcast if student isn't logged in\n\n      if (connectedAgents[socket.id]) {\n        connectedAgents[socket.id].last_seen = Date.now();",
+      "StartLine": 198,
+      "TargetContent": "    // Screen Frame\n    socket.on('agent:frame', (data) => {\n      if (!stringId) return;\n      if (connectedAgents[socket.id]) {\n        connectedAgents[socket.id].last_seen = Date.now();"
+    },
+    {
+      "AllowMultiple": false,
+      "EndLine": 216,
+      "ReplacementContent": "    // Telemetry\n    socket.on('agent:activity', async (data) => {\n      if (!numId || !stringId) return;\n      if (!activeWebSessions.has(stringId)) return; // DO NOT broadcast if student isn't logged in\n",
+      "StartLine": 213,
+      "TargetContent": "    // Telemetry\n    socket.on('agent:activity', async (data) => {\n      if (!numId || !stringId) return;\n"
+    },
+    {
+      "AllowMultiple": false,
+      "EndLine": 331,
+      "ReplacementContent": "    socket.on('disconnect', () => {\n      console.log(`Agent disconnected: ${socket.id}`);\n      delete connectedAgents[socket.id];\n      \n      if (socket.is_web_client && stringId) {\n        activeWebSessions.delete(stringId);\n      }\n      \n      if (stringId) {\n        dashboardNs.to('session:active').emit('session:student_left', { student_id: stringId });\n      }",
+      "StartLine": 326,
+      "TargetContent": "    socket.on('disconnect', () => {\n      console.log(`Agent disconnected: ${socket.id}`);\n      delete connectedAgents[socket.id];\n      if (stringId) {\n        dashboardNs.to('session:active').emit('session:student_left', { student_id: stringId });\n      }"
+    }
+  ],
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Updating socketHandler.js to block telemetry until web login",
+  "toolSummary": "Update socketHandler telemetry filter"
+}
+--- FOUND MODIFICATION ---
+{
+  "ArtifactMetadata": {
+    "RequestFeedback": true,
+    "Summary": "Full implementation plan for SIET Overwatch v2.0: Exam Rooms, JWT auth, SHA-256 checksum, frozen frame detection, Exam Rules page, improved UI, and a release installer folder.",
+    "UserFacing": true
+  },
+  "Description": "Updated implementation plan to reflect new v2.0 architecture.",
+  "Instruction": "Replace the entire implementation plan with the new v2.0 plan",
+  "ReplacementChunks": [
+    {
+      "AllowMultiple": true,
+      "EndLine": 999,
+      "ReplacementContent": "# Implementation Plan: SIET Overwatch v2.0\n\nThis is the full plan to build the complete system based on the Architecture Design document, reusing all working existing code.\n\n---\n\n## What Already Works (Reusing As-Is)\n- Socket.io real-time streaming pipeline (agent \u2192 server \u2192 teacher)\n- Screen capture (agent:frame), USB detection, blacklisted app detection, window spike\n- Risk engine, rules engine, AI behavior engine\n- SQLite database layer\n- TeacherDashboard base layout, FocusView, LiveGrid, AdminPanel\n- StudentPortal screen sharing + mock buttons\n\n---\n\n## New Things to Build\n\n### 1. Backend: Exam Room System + JWT Auth\n**Files to modify/add:**\n- `server/src/routes/api.js` \u2014 Add `/exam/rooms` CRUD, `/agent/verify` endpoint (validates student username+password+exam_id), returns JWT\n- `server/src/sockets/socketHandler.js` \u2014 Gate all telemetry on JWT verification; rooms are keyed by exam_id so each teacher only sees their own students\n\n### 2. Backend: Frozen Frame Detection (Perceptual Hash)\n- `server/src/engine/frozenFrameEngine.js` \u2014 NEW: tracks incoming frames per student, computes pixel diff score (simple variance on a downsampled copy), combined with idle_seconds check; flags \"Suspiciously Perfect Telemetry\" if both correlate over 30s\n\n### 3. Backend: SHA-256 Agent Checksum Handshake\n- `server/src/routes/api.js` \u2014 Add `/agent/checksum` endpoint: agent POSTs its own SHA-256 hash at startup, server compares against stored official hash, rejects if mismatched\n\n### 4. Frontend: Beautiful New Login Page\n- `frontend/src/pages/Login.jsx` \u2014 Completely redesigned: animated gradient background, glassmorphism card, SIET Overwatch branding, smooth entrance animation\n\n### 5. Frontend: New Exam Rules Interstitial Page\n- `frontend/src/pages/ExamRules.jsx` \u2014 NEW page: shows Allowed \u2705 and Not Allowed \u274c list, exam timer countdown, \"I Understand, Start Exam\" button that triggers screen share\n\n### 6. Frontend: Improved TeacherDashboard\n- `frontend/src/pages/TeacherDashboard.jsx` \u2014 Add Exam Room selector at top, teacher sees only their assigned students; add \"Frozen Frame\" alert badge\n\n### 7. Frontend: Improved AdminPanel Controls\n- `frontend/src/components/AdminPanel.jsx` \u2014 Add min/max threshold sliders, allow-listed apps management\n\n### 8. Student Agent: SHA-256 Checksum + JWT Auth + Auto-Browser\n- `agent/student_agent.py` \u2014 At startup: compute own SHA-256 hash, POST to server for checksum validation; prompt username/password/exam_id, POST to /agent/verify for JWT; on success launch browser to ExamRules page\n\n### 9. Installer Folder\n- `release/student_agent.exe` \u2014 Compiled ready-to-run `.exe` placed in a clean `release/` folder at project root\n\n---\n\n## Open Questions\n> [!IMPORTANT]\n> 1. For the Exam Room system: should teachers create exam rooms from the dashboard (one room per exam), or is one global teacher session enough for the hackathon demo?\n> 2. For the auto-browser launch: should it open the student exam portal in a normal Chrome window, or should it go into fullscreen kiosk mode?\n> 3. For the SHA-256 checksum: should this be enforced strictly or just logged as a warning for the demo?\n\n## Verification Plan\n1. Run `npm run dev` in server and frontend\n2. Launch rebuilt `student_agent.exe`, enter student credentials + exam ID\n3. Verify exam rules page auto-opens in browser\n4. Verify student appears ONLY under the correct teacher's dashboard\n5. Test tab-switch flagging, frozen-frame detection, USB detection\n6. Copy `release/student_agent.exe` to a friend's PC and verify it runs on Windows 10/11\n",
+      "StartLine": 1,
+      "TargetContent": ""
+    }
+  ],
+  "TargetFile": "C:\\Users\\surab\\.gemini\\antigravity-ide\\brain\\d361e581-309c-494b-b274-d95109b3f31d\\implementation_plan.md",
+  "toolAction": "Updating implementation plan for v2.0",
+  "toolSummary": "Update implementation_plan.md"
+}
+--- FOUND MODIFICATION ---
+{
+  "Description": "Wired frozenFrameEngine into socketHandler: import at top, check on each frame, emit frozen_frame alert if detected.",
+  "Instruction": "Import frozenFrameEngine and wire it into agent:frame handler",
+  "ReplacementChunks": [
+    {
+      "AllowMultiple": false,
+      "EndLine": 2,
+      "ReplacementContent": "const rulesEngine = require('../engine/rulesEngine');\r\nconst riskEngine = require('../engine/riskEngine');\r\nconst frozenFrameEngine = require('../engine/frozenFrameEngine');",
+      "StartLine": 1,
+      "TargetContent": "const rulesEngine = require('../engine/rulesEngine');\r\nconst riskEngine = require('../engine/riskEngine');"
+    },
+    {
+      "AllowMultiple": false,
+      "EndLine": 213,
+      "ReplacementContent": "    // Screen Frame\r\n    socket.on('agent:frame', (data) => {\r\n      if (!stringId) return;\r\n      if (!activeWebSessions.has(stringId)) return; // DO NOT broadcast if student isn't logged in\r\n\r\n      if (connectedAgents[socket.id]) {\r\n        connectedAgents[socket.id].last_seen = Date.now();\r\n        connectedAgents[socket.id].status = 'online';\r\n        connectedAgents[socket.id].last_frame = data.jpeg_base64;\r\n      }\r\n\r\n      // Frozen Frame Detection: dual-signal check\r\n      const idleSecs = connectedAgents[socket.id]?.idle_seconds || 0;\r\n      const { isFrozen, frozenSeconds } = frozenFrameEngine.checkFrozenFrame(stringId, data.jpeg_base64, idleSecs);\r\n      if (isFrozen) {\r\n        dashboardNs.to('session:active').emit('alert:frozen_frame', {\r\n          student_id: stringId,\r\n          detail: `Suspiciously Perfect Telemetry: Screen unchanged for ${frozenSeconds}s with zero input`,\r\n          timestamp: new Date().toISOString()\r\n        });\r\n      }\r\n\r\n      dashboardNs.to('session:active').emit('frame:update', {\r\n        student_id: stringId,\r\n        jpeg_base64: data.jpeg_base64,\r\n        timestamp: data.timestamp,\r\n        frozen: isFrozen\r\n      });\r\n    });",
+      "StartLine": 198,
+      "TargetContent": "    // Screen Frame\r\n    socket.on('agent:frame', (data) => {\r\n      if (!stringId) return;\r\n      if (!activeWebSessions.has(stringId)) return; // DO NOT broadcast if student isn't logged in\r\n\r\n      if (connectedAgents[socket.id]) {\r\n        connectedAgents[socket.id].last_seen = Date.now();\r\n        connectedAgents[socket.id].status = 'online';\r\n        connectedAgents[socket.id].last_frame = data.jpeg_base64; // cache for late-join snapshot\r\n      }\r\n      dashboardNs.to('session:active').emit('frame:update', {\r\n        student_id: stringId,\r\n        jpeg_base64: data.jpeg_base64,\r\n        timestamp: data.timestamp\r\n      });\r\n    });"
+    }
+  ],
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Wiring frozen frame engine into socketHandler",
+  "toolSummary": "Update socketHandler.js frame handler"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Fixed corrupted template literals in the tab switch handler by restoring proper backtick strings.",
+  "EndLine": 359,
+  "Instruction": "Fix corrupted template literals in tab_switch handler",
+  "ReplacementContent": "\n    // Tab Switch Detection (real-time from browser)\n    socket.on('agent:tab_switch', async (data) => {\n      if (!stringId || !numId) return;\n      try {\n        await db.run(\n          'INSERT INTO flags (student_id, rule_type, detail, risk_score_delta, status) VALUES (?, ?, ?, ?, ?)',\n          [numId, 'tab_switch', `Tab switched ${data.count} time(s) \u2014 browser focus lost`, 15, 'active']\n        );\n        dashboardNs.to('session:active').emit('alert:tab_switch', {\n          student_id: stringId,\n          detail: `Tab switch #${data.count} detected \u2014 student left exam portal`,\n          timestamp: new Date().toISOString()\n        });\n        dashboardNs.to('session:active').emit('flag:new', {\n          student_id: stringId,\n          rule_type: 'tab_switch',\n          detail: `Tab switch #${data.count}: student left exam portal`,\n          risk_score_delta: 15,\n          created_at: new Date().toISOString()\n        });\n      } catch(e) { console.warn('Tab switch log error', e); }\n    });\n",
+  "StartLine": 337,
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Fixing corrupted template literals in tab switch handler",
+  "toolSummary": "Fix tab switch syntax error"
+}
+--- FOUND MODIFICATION ---
+{
+  "AllowMultiple": false,
+  "Description": "Updated Walkthrough.md to include the latest architecture alignments.",
+  "EndLine": 41,
+  "Instruction": "Update walkthrough.md to include bcrypt, JWT, and dynamic framerate",
+  "ReplacementContent": "### 4. Architecture Design Alignments (Latest Updates)\n- **[MODIFY] [api.js](file:///c:/Users/surab/Desktop/SIET%20Hack/server/src/routes/api.js)**: Upgraded password hashing algorithm from `pbkdf2Sync` to **bcrypt** as per the Architecture Design document.\n- **[MODIFY] [socketHandler.js](file:///c:/Users/surab/Desktop/SIET%20Hack/server/src/sockets/socketHandler.js)**: Added JWT validation middleware to `agentNs`. The backend now actively drops sockets that do not send a valid cryptographic JWT `token` upon connection, preventing spoofing and unauthenticated access. Agents also correctly join exam-specific rooms if an `exam_id` is supplied.\n- **[MODIFY] [student_agent.py](file:///c:/Users/surab/Desktop/SIET%20Hack/agent/student_agent.py)**: Added dynamic framerate logic (scales smoothly from 1 FPS at idle up to 5 FPS during active typing/mouse movement) to reduce network bandwidth. The agent now formally transmits the `token` and `exam_id` in its socket initialization parameters for JWT verification.\n- **[MODIFY] [PrivacyDashboard.jsx](file:///c:/Users/surab/Desktop/SIET%20Hack/frontend/src/components/PrivacyDashboard.jsx)**: Removed a corrupted `git checkout -b` string that broke the Vite compiler on the frontend.\n\n---\n\n## Verification Results\n\n| Component | Test Description | Status |\n| :--- | :--- | :--- |\n| **Server Routing** | Middleware order verified; `/api/agents/status` reads `connectedAgents` | \u2705 Verified |\n| **Authentication** | Passwords stored with bcrypt; login verification succeeds | \u2705 Verified |\n| **Workstation Lock** | Exam textarea disabled statefully when `isLocked === true` | \u2705 Verified |\n| **Grid Filter** | Connected students appear immediately in live grid | \u2705 Verified |\n| **Accessibility** | ARIA attributes and text badges active on live grid & classroom map | \u2705 Verified |\n| **Python Agent** | Framerate scales dynamically; Display grab guarded against crashes | \u2705 Verified |\n| **Architecture** | Agent socket connects with JWT; `socketHandler.js` properly validates it | \u2705 Verified |\n",
+  "StartLine": 31,
+  "TargetFile": "C:\\Users\\surab\\.gemini\\antigravity-ide\\brain\\d361e581-309c-494b-b274-d95109b3f31d\\walkthrough.md",
+  "toolAction": "Updating walkthrough.md with the latest Architecture alignments",
+  "toolSummary": "Update walkthrough.md"
+}
+--- FOUND MODIFICATION ---
+{
+  "Description": "Allow telemetry and frames to be processed for standalone desktop agents that bypass the web login.",
+  "Instruction": "Remove the activeWebSessions check in agent:frame and agent:activity handlers.",
+  "ReplacementChunks": [
+    {
+      "AllowMultiple": false,
+      "EndLine": 235,
+      "ReplacementContent": "    socket.on('agent:frame', (data) => {\n      if (!stringId) return;",
+      "StartLine": 232,
+      "TargetContent": "    socket.on('agent:frame', (data) => {\n      if (!stringId) return;\n      if (!activeWebSessions.has(stringId)) return; // DO NOT broadcast if student isn't logged in"
+    },
+    {
+      "AllowMultiple": false,
+      "EndLine": 265,
+      "ReplacementContent": "    socket.on('agent:activity', async (data) => {\n      if (!numId || !stringId) return;",
+      "StartLine": 262,
+      "TargetContent": "    socket.on('agent:activity', async (data) => {\n      if (!numId || !stringId) return;\n      if (!activeWebSessions.has(stringId)) return; // DO NOT broadcast if student isn't logged in"
+    }
+  ],
+  "TargetFile": "c:\\Users\\surab\\Desktop\\SIET Hack - Copy\\server\\src\\sockets\\socketHandler.js",
+  "toolAction": "Fixing socketHandler.js activeWebSessions checks",
+  "toolSummary": "Fix socketHandler.js"
+}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { Shield, LayoutGrid, Activity, MapPin, Settings, Lock, FileText, Search, X, Download } from 'lucide-react';
+import { Shield, LayoutGrid, Activity, MapPin, Settings, Lock, FileText, Search, X, Download, Users } from 'lucide-react';
 import { getApiUrl, getSocketUrl } from '../config';
 
 import LiveGrid from '../components/LiveGrid';
@@ -9,6 +9,7 @@ import ActivityHeatmap from '../components/ActivityHeatmap';
 import SmartClassroomMap from '../components/SmartClassroomMap';
 import AdminPanel from '../components/AdminPanel';
 import PrivacyDashboard from '../components/PrivacyDashboard';
+import UserManagementPanel from '../components/UserManagementPanel';
 
 const TeacherDashboard = () => {
   const [activeTab, setActiveTab] = useState('grid');
@@ -18,6 +19,27 @@ const TeacherDashboard = () => {
   const [filterRisk, setFilterRisk] = useState('all'); // all | high | low
   const [sessionSummary, setSessionSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [creatingSession, setCreatingSession] = useState(false);
+
+  const handleCreateSession = async () => {
+    setCreatingSession(true);
+    try {
+      const res = await fetch(getApiUrl('/teacher/sessions'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teacher_username: user.username })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveSessionId(data.session_id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setCreatingSession(false);
+  };
+
   const socketRef = useRef(null);
   const navigate = useNavigate();
 
@@ -156,6 +178,9 @@ const TeacherDashboard = () => {
     { id: 'admin', label: 'Admin', icon: Settings },
     { id: 'privacy', label: 'Privacy', icon: Lock },
   ];
+  if (user.role === 'admin') {
+    navItems.push({ id: 'users', label: 'Users', icon: Users });
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0F1115] text-white">
@@ -188,6 +213,24 @@ const TeacherDashboard = () => {
         </nav>
 
         <div className="flex items-center gap-3">
+          {/* Active Session Creator */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 border border-blue-500/30 rounded-lg">
+            {activeSessionId ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-blue-300 font-medium uppercase tracking-wider">Session ID:</span>
+                <span className="font-mono text-base font-bold text-green-400 tracking-widest">{activeSessionId}</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleCreateSession}
+                disabled={creatingSession}
+                className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-all uppercase tracking-wider flex items-center gap-1"
+              >
+                {creatingSession ? 'Creating...' : '+ Create Session ID'}
+              </button>
+            )}
+          </div>
+
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#1E2330] rounded-lg border border-white/5">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-sm text-white/70">{allStudents.length} online</span>
@@ -266,6 +309,7 @@ const TeacherDashboard = () => {
         {activeTab === 'map' && <SmartClassroomMap students={filteredStudents} flags={flags} />}
         {activeTab === 'admin' && <AdminPanel />}
         {activeTab === 'privacy' && <PrivacyDashboard />}
+        {activeTab === 'users' && user.role === 'admin' && <UserManagementPanel />}
         {activeTab === 'summary' && sessionSummary && (
           <SessionSummaryView summary={sessionSummary} onExport={handleExport} />
         )}

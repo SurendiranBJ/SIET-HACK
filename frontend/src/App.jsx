@@ -1,9 +1,10 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
-import Signup from './pages/Signup';
 import TeacherDashboard from './pages/TeacherDashboard';
 import StudentPortal from './pages/StudentPortal';
+import AutoLogin from './pages/AutoLogin';
+import ExamRules from './pages/ExamRules';
 
 // Simulated Auth Context
 const getAuth = () => {
@@ -16,7 +17,9 @@ const PrivateRoute = ({ children, role }) => {
   const user = getAuth();
   if (!user) return <Navigate to="/login" />;
   if (role && user.role !== role) {
-    return <Navigate to={user.role === 'teacher' ? "/teacher" : "/student"} />;
+    if (user.role === 'teacher') return <Navigate to="/teacher" />;
+    if (user.role === 'admin') return <Navigate to="/admin" />;
+    return <Navigate to="/student" />;
   }
   return children;
 };
@@ -28,7 +31,6 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/login" />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
           
           <Route 
             path="/teacher" 
@@ -38,7 +40,27 @@ function App() {
               </PrivateRoute>
             } 
           />
+
+          <Route 
+            path="/admin" 
+            element={
+              <PrivateRoute role="admin">
+                <TeacherDashboard />
+              </PrivateRoute>
+            } 
+          />
           
+          <Route path="/auto-login" element={<AutoLogin />} />
+          
+          <Route 
+            path="/exam-rules" 
+            element={
+              <PrivateRoute role="student">
+                <ExamRules />
+              </PrivateRoute>
+            } 
+          />
+
           <Route 
             path="/student" 
             element={

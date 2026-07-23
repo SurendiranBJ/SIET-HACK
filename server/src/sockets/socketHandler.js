@@ -1,5 +1,6 @@
 const rulesEngine = require('../engine/rulesEngine');
 const riskEngine = require('../engine/riskEngine');
+const frozenFrameEngine = require('../engine/frozenFrameEngine');
 
 module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
 
@@ -180,12 +181,33 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
       if (connectedAgents[socket.id]) {
         connectedAgents[socket.id].last_seen = Date.now();
         connectedAgents[socket.id].status = 'online';
-        connectedAgents[socket.id].last_frame = data.jpeg_base64; // cache for late-join snapshot
+        connectedAgents[socket.id].last_frame = data.jpeg_base64;
       }
+
+      // Frozen Frame Detection: dual-signal check
+      const idleSecs = connectedAgents[socket.id]?.idle_seconds || 0;
+      const { isFrozen, frozenSeconds } = frozenFrameEngine.checkFrozenFrame(stringId, data.jpeg_base64, idleSecs);
+      if (isFrozen) {
+        dashboardNs.to('session:active').emit('flag:new', {
+          student_id: stringId,
+          rule_type: 'frozen_frame',
+          detail: `Suspiciously Perfect Telemetry: Screen unchanged for ${frozenSeconds}s with zero input`,
+          severity: 'high',
+          risk_score_delta: 20,
+          timestamp: new Date().toISOString()
+        });
+        dashboardNs.to('session:active').emit('alert:frozen_frame', {
+          student_id: stringId,
+          detail: `Suspiciously Perfect Telemetry: Screen unchanged for ${frozenSeconds}s with zero input`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       dashboardNs.to('session:active').emit('frame:update', {
         student_id: stringId,
         jpeg_base64: data.jpeg_base64,
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
+        frozen: isFrozen
       });
     });
 
@@ -290,7 +312,13 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
         activity_score: overall_activity_score,
         typing_speed,
         idle_seconds: idle_seconds || 0,
-        mouse_score: mouseScore
+        mouse_score: mouseScore,
+        active_window: data.active_window || '',
+        window_count: data.window_count || 1,
+        monitor_count: data.monitor_count || 1,
+        usb_detected: data.usb_detected || false,
+        usb_events: data.usb_events || [],
+        processes: data.processes || []
       });
     });
 
@@ -300,6 +328,43 @@ module.exports = function setupSocketHandlers(agentNs, dashboardNs, db) {
         connectedAgents[socket.id].last_seen = Date.now();
         connectedAgents[socket.id].status = 'online';
       }
+    });
+
+    // Tab Switch Detection (real-time from browser)
+    socket.on('agent:tab_switch', async (data) => {
+      if (!stringId || !numId) return;
+      try {
+        await db.run(
+          'INSERT INTO flags (session_id, student_id, rule_type, detail, severity, risk_score_delta) VALUES (?, ?, ?, ?, ?, ?)',
+          [sessionId, numId, 'tab_switch', `Tab switched ${data.count} time(s) — browser focus lost`, 'high', 15]
+        );
+        dashboardNs.to('session:active').emit('alert:tab_switch', {
+          student_id: stringId,
+          detail: `Tab switch #${data.count} detected — student left exam portal`,
+          timestamp: new Date().toISOString()
+        });
+        dashboardNs.to('session:active').emit('flag:new', {
+          student_id: stringId,
+          rule_type: 'tab_switch',
+          detail: `Tab switch #${data.count}: student left exam portal`,
+          risk_score_delta: 15,
+          created_at: new Date().toISOString()
+        });
+      } catch(e) { console.warn('Tab switch log error', e); }
+    });
+
+    // Teacher sends a live warning message to a specific student's screen
+    socket.on('teacher:warn_student', (data) => {
+      const { student_id, message } = data;
+      for (const [sid, agent] of Object.entries(connectedAgents)) {
+        if (agent.string_id === student_id) {
+          agentNs.to(sid).emit('command:warn', { message: message || 'Your exam is being monitored. Please focus.' });
+          break;
+        }
+      }
+      dashboardNs.to('session:active').emit('student:warned', { student_id, message });
+      db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
+        ['teacher', 'warn_student', student_id, `Warning sent: ${message}`]);
     });
 
     socket.on('disconnect', () => {

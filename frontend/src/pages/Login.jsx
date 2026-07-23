@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Shield, Eye, EyeOff } from 'lucide-react';
 import { getApiUrl } from '../config';
 
@@ -17,7 +17,7 @@ const Login = () => {
       try {
         const u = JSON.parse(userStr);
         if (u.role === 'teacher') navigate('/teacher', { replace: true });
-        else if (u.role === 'student') navigate('/student', { replace: true });
+        else if (u.role === 'admin') navigate('/admin', { replace: true });
       } catch (_) {}
     }
   }, [navigate]);
@@ -40,10 +40,12 @@ const Login = () => {
       }
 
       localStorage.setItem('siet_user', JSON.stringify(data.user));
-      if (data.user.role === 'teacher') {
+      if (data.user.role === 'admin') {
+        navigate('/admin');
+      } else if (data.user.role === 'teacher') {
         navigate('/teacher');
       } else {
-        navigate('/student');
+        navigate('/login');
       }
     } catch (err) {
       setError(err.message);
@@ -116,13 +118,6 @@ const Login = () => {
               {isLoading ? 'Authenticating...' : 'Sign In'}
             </button>
           </form>
-
-          <div className="mt-8 text-center text-sm text-white/40">
-            Don't have an account?{' '}
-            <Link to="/signup" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
-              Sign up here
-            </Link>
-          </div>
         </div>
       </div>
     </div>

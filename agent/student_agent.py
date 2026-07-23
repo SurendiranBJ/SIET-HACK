@@ -237,15 +237,133 @@ def main_loop():
             print(f"[AGENT] Error in monitoring loop: {e}")
             time.sleep(2)
 
-# ─── Entry point ──────────────────────────────────────────────────────────────
+import os
+import sys
+import shutil
+import hashlib
+import webbrowser
+import urllib.request
+import urllib.error
+import json
+import getpass
+
+def compute_own_sha256():
+    """Compute SHA-256 hash of this exe/script."""
+    try:
+        exe = sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)
+        sha = hashlib.sha256()
+        with open(exe, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha.update(chunk)
+        return sha.hexdigest()
+    except Exception:
+        return "unknown"
+
+def verify_checksum(server_url, student_id):
+    """Send SHA-256 to server for tamper detection."""
+    sha256 = compute_own_sha256()
+    try:
+        data = json.dumps({"student_id": student_id, "sha256": sha256}).encode()
+        req = urllib.request.Request(
+            f"{server_url}/api/agent/checksum",
+            data=data, method="POST",
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read())
+            if result.get("warning") == "CHECKSUM_MISMATCH":
+                print("[SECURITY] ⚠️  WARNING: Agent binary checksum mismatch detected! Logged to server.")
+            else:
+                print("[SECURITY] ✅ Checksum verified.")
+    except Exception:
+        print("[SECURITY] Could not verify checksum. Continuing...")
+
+def jwt_login(server_url, username, password, exam_id):
+    """Authenticate student against server, get JWT token."""
+    try:
+        data = json.dumps({"username": username, "password": password, "exam_id": exam_id}).encode()
+        req = urllib.request.Request(
+            f"{server_url}/api/agent/verify",
+            data=data, method="POST",
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            result = json.loads(resp.read())
+            return result.get("token"), result.get("username")
+    except urllib.error.HTTPError as e:
+        body = json.loads(e.read())
+        raise ValueError(body.get("error", "Login failed"))
+    except Exception as e:
+        raise ValueError(f"Could not reach server: {e}")
+
+def launch_exam_browser(server_url, username, token, session_id):
+    """Auto-login to the exam portal using the SSO token."""
+    # Point to Vite frontend on port 5173
+    if ":3000" in server_url:
+        frontend_url = server_url.replace(":3000", ":5173")
+    else:
+        frontend_url = "http://localhost:5173"
+
+    exam_url = f"{frontend_url}/auto-login?token={token}&username={username}&role=student&exam_id={session_id}"
+    print(f"[BROWSER] Opening secure exam portal for {username}...")
+    try:
+        webbrowser.open(exam_url)
+    except Exception:
+        print(f"[BROWSER] Could not auto-open browser. Please navigate to: {exam_url}")
+
+def get_config():
+    global STUDENT_ID
+    print("=" * 51)
+    print("        SIET OVERWATCH - STUDENT AGENT v2.2     ")
+    print("=" * 51)
+
+    ip = input("Enter Teacher's Server IP (blank=localhost): ").strip()
+    url = f"http://{ip}:3000" if (ip and not ip.startswith("http")) else (ip or "http://localhost:3000")
+    sid = input("Enter your Roll No / Username: ").strip()
+    if not sid: sid = "STD-" + str(uuid.uuid4())[:8]
+
+    return url, sid
+
+# --- Entry point ---
 if __name__ == "__main__":
-    print(f"[AGENT] Starting SIET Overwatch Agent...")
-    print(f"[AGENT] Connecting to: {SERVER_URL}")
     while True:
-        try:
-            sio.connect(SERVER_URL, namespaces=["/agent"])
+        SERVER_URL, STUDENT_ID = get_config()
+        print(f"\n[AGENT] Connecting to: {SERVER_URL} as {STUDENT_ID}")
+
+        # Step 1: SHA-256 Checksum Verification
+        verify_checksum(SERVER_URL, STUDENT_ID)
+
+        # Step 2: JWT Authentication
+        password = ""
+        while True:
+            try:
+                print(f"\n[AUTH] Authenticating student: {STUDENT_ID}")
+                password = getpass.getpass("Enter your password: ")
+                exam_id = input("Enter Teacher's Session ID: ").strip()
+                if not exam_id:
+                    print("Session ID is strictly required.")
+                    continue
+                token, username = jwt_login(SERVER_URL, STUDENT_ID, password, exam_id)
+                print(f"[AUTH] ✅ Login successful for: {username}")
+                break
+            except ValueError as e:
+                print(f"[AUTH] ❌ Login failed: {e}. Please try again.")
+
+        # Step 3: Auto-launch exam browser with SSO Token
+        launch_exam_browser(SERVER_URL, username, token, exam_id)
+
+        # Step 4: Connect via Socket.io
+        connected = False
+        for attempt in range(3):
+            try:
+                sio.connect(SERVER_URL, namespaces=["/agent"], auth={"token": token, "exam_id": exam_id})
+                connected = True
+                break
+            except Exception:
+                print(f"[AGENT] Server not reachable. Retrying in 3s... (Attempt {attempt+1}/3)")
+                time.sleep(3)
+
+        if connected:
             break
-        except Exception:
-            print(f"[AGENT] Server not reachable. Retrying in 3s...")
-            time.sleep(3)
+
     main_loop()

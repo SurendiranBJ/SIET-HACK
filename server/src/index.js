@@ -46,6 +46,11 @@ async function startServer() {
   // API Routes
   app.use('/api', apiRoutes);
 
+  // Auto-login redirect to Vite frontend (port 5173)
+  app.get('/auto-login', (req, res) => {
+    res.redirect(`http://localhost:5173${req.originalUrl}`);
+  });
+
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on port ${PORT}`);

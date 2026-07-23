@@ -1,0 +1,369 @@
+--- 
++++ 
+@@ -1,3 +1,10 @@
++import sys
++import os
++import json
++import getpass
++import webbrowser
++import urllib.request
++import shutil
+ import time
+ import uuid
+ import socket
+@@ -9,8 +16,10 @@
+ import socketio
+ from pynput import keyboard
+ import string
+-
+-# ΓöÇΓöÇΓöÇ Configuration ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++import tkinter as tk
++from tkinter import messagebox
++
++# ─── Configuration ────────────────────────────────────────────────────────────
+ SERVER_URL = "http://localhost:3000"
+ STUDENT_ID = "STD-" + str(uuid.uuid4())[:8]
+ 
+@@ -21,7 +30,7 @@
+     "vnc", "zoom", "parsec", "ammyy", "logmein"
+ ]
+ 
+-# ΓöÇΓöÇΓöÇ Socket client setup ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# ─── Socket client setup ──────────────────────────────────────────────────────
+ sio = socketio.Client(reconnection=True, reconnection_delay=2, reconnection_attempts=99999)
+ 
+ try:
+@@ -29,7 +38,7 @@
+ except Exception:
+     sct = mss.mss()
+ 
+-# ΓöÇΓöÇΓöÇ Keystroke tracking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# ─── Keystroke tracking ───────────────────────────────────────────────────────
+ keystroke_count = 0
+ 
+ def on_press(key):
+@@ -39,7 +48,7 @@
+ listener = keyboard.Listener(on_press=on_press)
+ listener.start()
+ 
+-# ΓöÇΓöÇΓöÇ USB drive tracking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# ─── USB drive tracking ───────────────────────────────────────────────────────
+ _prev_usb_drives = set()
+ 
+ def get_usb_drives():
+@@ -65,10 +74,10 @@
+     new_drives = current - _prev_usb_drives
+     _prev_usb_drives = current
+     if new_drives:
+-        print(f"[USB] ΓÜá∩╕Å  New USB drive(s) detected: {new_drives}")
++        print(f"[USB] ⚠️  New USB drive(s) detected: {new_drives}")
+     return bool(new_drives), list(new_drives)
+ 
+-# ΓöÇΓöÇΓöÇ Windows API helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# ─── Windows API helpers ──────────────────────────────────────────────────────
+ class LASTINPUTINFO(ctypes.Structure):
+     _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+ 
+@@ -107,7 +116,26 @@
+     except Exception:
+         return 1
+ 
+-# ΓöÇΓöÇΓöÇ Screen capture ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++def get_clipboard_size():
++    try:
++        CF_UNICODETEXT = 13
++        user32 = ctypes.windll.user32
++        kernel32 = ctypes.windll.kernel32
++        
++        user32.OpenClipboard(0)
++        if user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
++            handle = user32.GetClipboardData(CF_UNICODETEXT)
++            ptr = kernel32.GlobalLock(handle)
++            text = ctypes.c_wchar_p(ptr).value
++            kernel32.GlobalUnlock(handle)
++            user32.CloseClipboard()
++            return len(text) if text else 0
++        user32.CloseClipboard()
++        return 0
++    except Exception:
++        return 0
++
++# ─── Screen capture ───────────────────────────────────────────────────────────
+ def capture_screen():
+     try:
+         mon_idx = 1 if len(sct.monitors) > 1 else 0
+@@ -122,7 +150,7 @@
+         print(f"[SCREEN] Capture warning: {e}")
+         return ""
+ 
+-# ΓöÇΓöÇΓöÇ Socket events ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++# ─── Socket events ────────────────────────────────────────────────────────────
+ @sio.event(namespace="/agent")
+ def connect():
+     hostname = socket.gethostname()
+@@ -137,11 +165,11 @@
+         "ip": ip,
+         "mac": mac
+     }, namespace="/agent")
+-    print(f"[AGENT] Γ£à Connected as Student: {STUDENT_ID}")
++    print(f"[AGENT] ✅ Connected as Student: {STUDENT_ID}")
+ 
+ @sio.event(namespace="/agent")
+ def connect_error(data):
+-    print(f"[AGENT] Γ¥î Connection failed: {data}")
++    print(f"[AGENT] ❌ Connection failed: {data}")
+ 
+ @sio.event(namespace="/agent")
+ def disconnect():
+@@ -149,17 +177,17 @@
+ 
+ @sio.on("command:warn", namespace="/agent")
+ def on_warn(data):
+-    print(f"\n[ΓÜá∩╕Å  TEACHER WARNING] {data.get('message', '')}\n")
++    print(f"\n[⚠️  TEACHER WARNING] {data.get('message', '')}\n")
+ 
+ @sio.on("command:lock_screen", namespace="/agent")
+ def on_lock(data=None):
+-    print("[AGENT] ≡ƒöÆ Screen locked by teacher.")
++    print("[AGENT] 🔒 Screen locked by teacher.")
+ 
+ @sio.on("command:unlock_screen", namespace="/agent")
+ def on_unlock(data=None):
+-    print("[AGENT] ≡ƒöô Screen unlocked by teacher.")
+-
+-# ΓöÇΓöÇΓöÇ Main monitoring loop ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++    print("[AGENT] 🔓 Screen unlocked by teacher.")
++
++# ─── Main monitoring loop ─────────────────────────────────────────────────────
+ def main_loop():
+     global keystroke_count
+     # Initialize USB baseline on first run
+@@ -173,7 +201,7 @@
+             continue
+ 
+         try:
+-            # ΓöÇΓöÇ 1. Screen capture ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++            # ── 1. Screen capture ──────────────────────────────────────────
+             jpeg_b64 = capture_screen()
+             if jpeg_b64:
+                 sio.emit("agent:frame", {
+@@ -181,7 +209,7 @@
+                     "timestamp": time.time()
+                 }, namespace="/agent")
+ 
+-            # ΓöÇΓöÇ 2. Process list ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++            # ── 2. Process list ────────────────────────────────────────────
+             processes = []
+             for p in psutil.process_iter(["name"]):
+                 try:
+@@ -191,7 +219,7 @@
+                 except Exception:
+                     pass
+ 
+-            # ΓöÇΓöÇ 3. Active window & system state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++            # ── 3. Active window & system state ───────────────────────────
+             idle_seconds = get_idle_time()
+             active_window = get_active_window_title()
+             window_count = get_visible_window_count()
+@@ -201,22 +229,24 @@
+             except Exception:
+                 num_monitors = 1
+ 
+-            # ΓöÇΓöÇ 4. USB Detection ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++            clipboard_size = get_clipboard_size()
++
++            # ── 4. USB Detection ───────────────────────────────────────────
+             usb_detected, new_drives = check_usb_event()
+ 
+-            # ΓöÇΓöÇ 5. Blacklisted app detection (local console logging) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++            # ── 5. Blacklisted app detection (local console logging) ───────
+             proc_str = " ".join(processes).lower()
+             window_lower = active_window.lower()
+             detected_blacklist = [kw for kw in BLACKLISTED_KEYWORDS
+                                   if kw in proc_str or kw in window_lower]
+             if detected_blacklist:
+-                print(f"[BLACKLIST] ΓÜá∩╕Å  Detected: {detected_blacklist} | Window: '{active_window}'")
+-
+-            # ΓöÇΓöÇ 6. Window spike console logging ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++                print(f"[BLACKLIST] ⚠️  Detected: {detected_blacklist} | Window: '{active_window}'")
++
++            # ── 6. Window spike console logging ───────────────────────────
+             if window_count > 3:
+-                print(f"[WINDOW_SPIKE] ΓÜá∩╕Å  {window_count} visible windows open")
+-
+-            # ΓöÇΓöÇ 7. Send full telemetry to server ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++                print(f"[WINDOW_SPIKE] ⚠️  {window_count} visible windows open")
++
++            # ── 7. Send full telemetry to server ──────────────────────────
+             sio.emit("agent:activity", {
+                 "mouse_delta": 10,
+                 "keystroke_count": keystroke_count,
+@@ -228,6 +258,7 @@
+                 "window_count": window_count,
+                 "usb_detected": usb_detected,
+                 "usb_events": new_drives,
++                "clipboard_size": clipboard_size
+             }, namespace="/agent")
+ 
+             keystroke_count = 0
+@@ -237,15 +268,152 @@
+             print(f"[AGENT] Error in monitoring loop: {e}")
+             time.sleep(2)
+ 
+-# ΓöÇΓöÇΓöÇ Entry point ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++import os
++import sys
++import shutil
++import hashlib
++import webbrowser
++import urllib.request
++import urllib.error
++import json
++import getpass
++
++# --- Configuration ---
++STUDENT_ID = "STD-Unknown"
++SERVER_URL = "http://localhost:3000"
++
++def compute_own_sha256():
++    """Compute SHA-256 hash of this exe/script."""
++    try:
++        exe = sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)
++        sha = hashlib.sha256()
++        with open(exe, "rb") as f:
++            for chunk in iter(lambda: f.read(8192), b""):
++                sha.update(chunk)
++        return sha.hexdigest()
++    except Exception:
++        return "unknown"
++
++def verify_checksum(server_url, student_id):
++    """Send SHA-256 to server for tamper detection."""
++    sha256 = compute_own_sha256()
++    try:
++        data = json.dumps({"student_id": student_id, "sha256": sha256}).encode()
++        req = urllib.request.Request(
++            f"{server_url}/api/agent/checksum",
++            data=data, method="POST",
++            headers={"Content-Type": "application/json"}
++        )
++        with urllib.request.urlopen(req, timeout=5) as resp:
++            result = json.loads(resp.read())
++            if result.get("warning") == "CHECKSUM_MISMATCH":
++                print("[SECURITY] ⚠️  WARNING: Agent binary checksum mismatch detected! Logged to server.")
++            else:
++                print("[SECURITY] ✅ Checksum verified.")
++    except Exception:
++        print("[SECURITY] Could not verify checksum (server offline?). Continuing...")
++
++def jwt_login(server_url, username, password, exam_id):
++    """Authenticate student against server, get JWT token."""
++    try:
++        data = json.dumps({"username": username, "password": password, "exam_id": exam_id}).encode()
++        req = urllib.request.Request(
++            f"{server_url}/api/agent/verify",
++            data=data, method="POST",
++            headers={"Content-Type": "application/json"}
++        )
++        with urllib.request.urlopen(req, timeout=8) as resp:
++            result = json.loads(resp.read())
++            return result.get("token"), result.get("username")
++    except urllib.error.HTTPError as e:
++        body = json.loads(e.read())
++        raise ValueError(body.get("error", "Login failed"))
++    except Exception as e:
++        raise ValueError(f"Could not reach server: {e}")
++
++def launch_exam_browser(server_url, username, token, session_id):
++    """Auto-login to the exam portal using the SSO token."""
++    # Strip port 3000 from the python server_url (backend) to point to frontend 5173
++    frontend_url = server_url.replace(":3000", ":5173")
++    exam_url = f"{frontend_url}/auto-login?token={token}&username={username}&role=student&exam_id={session_id}"
++    print(f"[BROWSER] Opening secure exam portal for {username}...")
++    try:
++        webbrowser.open(exam_url)
++    except Exception:
++        print(f"[BROWSER] Could not auto-open browser. Please navigate to: {exam_url}")
++
++def get_config(force_prompt=False):
++    global STUDENT_ID
++    print("=" * 51)
++    print("        SIET OVERWATCH - STUDENT AGENT v2.0     ")
++    print("=" * 51)
++
++    ip = input("Enter Teacher's Server IP (blank=localhost): ").strip()
++    url = f"http://{ip}:3000" if (ip and not ip.startswith("http")) else (ip or "http://localhost:3000")
++    sid = input("Enter your Roll No / Username: ").strip()
++    if not sid: sid = "STD-" + str(uuid.uuid4())[:8]
++
++    return url, sid
++
++def install_to_startup():
++    if getattr(sys, "frozen", False):
++        exe_path = sys.executable
++        startup_folder = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
++        target_path = os.path.join(startup_folder, "student_agent.exe")
++        if os.path.abspath(exe_path) != os.path.abspath(target_path):
++            try:
++                shutil.copy2(exe_path, target_path)
++                print("[INSTALL] Installed to Windows Startup (auto-run on next boot)")
++            except Exception:
++                pass
++
++# --- Entry point ---
+ if __name__ == "__main__":
+-    print(f"[AGENT] Starting SIET Overwatch Agent...")
+-    print(f"[AGENT] Connecting to: {SERVER_URL}")
++    install_to_startup()
++
++    force_prompt = False
+     while True:
+-        try:
+-            sio.connect(SERVER_URL, namespaces=["/agent"])
++        SERVER_URL, STUDENT_ID = get_config(force_prompt)
++        print(f"\n[AGENT] Connecting to: {SERVER_URL}")
++
++        # Step 1: SHA-256 Checksum Verification
++        verify_checksum(SERVER_URL, STUDENT_ID)
++
++        # Step 2: JWT Authentication
++        password = ""
++        while True:
++            try:
++                print(f"\n[AUTH] Authenticating student: {STUDENT_ID}")
++                password = getpass.getpass("Enter your password: ")
++                exam_id = input("Enter Teacher's Session ID: ").strip()
++                if not exam_id:
++                    print("Session ID is strictly required.")
++                    continue
++                token, username = jwt_login(SERVER_URL, STUDENT_ID, password, exam_id)
++                print(f"[AUTH] Login successful for: {username}")
++                break
++            except ValueError as e:
++                print(f"[AUTH] Login failed: {e}. Please try again.")
++                force_prompt = False
++
++        # Step 3: Auto-launch exam browser with SSO Token
++        launch_exam_browser(SERVER_URL, username, token, exam_id)
++
++        # Step 4: Connect via Socket.io
++        connected = False
++        for attempt in range(3):
++            try:
++                sio.connect(SERVER_URL, namespaces=["/agent"], auth={"token": token, "exam_id": exam_id})
++                connected = True
++                break
++            except Exception:
++                print(f"[AGENT] Server not reachable. Retrying in 3s... (Attempt {attempt+1}/3)")
++                time.sleep(3)
++
++        if connected:
+             break
+-        except Exception:
+-            print(f"[AGENT] Server not reachable. Retrying in 3s...")
+-            time.sleep(3)
++        else:
++            print("\n[ERROR] Could not connect. IP may have changed.")
++            force_prompt = True
++
+     main_loop()
