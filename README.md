@@ -1,147 +1,121 @@
-# Exam Safe - System Blueprint & Technical Specification
+# Exam Safe
 
-Exam Safe is a real-time, low-overhead, AI-supported exam proctoring and integrity monitoring platform. It comprises a local Win32 Python agent (`student_agent.py`), an asynchronous Node.js Express server (`server`), and a modern Vite/React single-page dashboard (`frontend`).
+A session-based platform for managing student, teacher, and admin accounts with live session tracking, forced screen-share verification, and role-based access control.
 
 ---
 
-## 1. System Architecture & Topology
+## Overview
 
-The application uses a hub-and-spoke model using WebSockets for bi-directional live communication:
+Exam Safe manages authenticated user sessions for students, teachers, and admins, with strict controls around session persistence, screen sharing, and account privileges. The UI has been fully redesigned around a clean login → session → lock/kickout flow.
 
+---
+
+## What's New in This Update
+
+- **Complete UI overhaul** — redesigned login, dashboard, and session screens for a cleaner user flow.
+- **Kickout flow fixed** — users who are kicked out are now properly logged out and required to start a fresh session (no stale-session leakage).
+- **Lock screen fixed** — lock screen now correctly re-locks and re-authenticates instead of silently letting old sessions through.
+- **Screen-share enforcement** — users can only log in and access their session **after** sharing their entire screen (not a window/tab). Partial or no screen share blocks login.
+- **Session persistence on refresh** — previously, refreshing the page created a brand-new session (major bug). Now the session correctly persists across refreshes.
+- **Kickout/lock + refresh bug fixed** — previously, a kicked-out or locked user could bypass the restriction by refreshing, which forced a new session and let them back in. This loophole is now closed — refreshing no longer resets kickout/lock state.
+- **Role-based privileges added:**
+  - **Admin** — full control: create/edit/delete/block any account (students, teachers), manage all sessions.
+  - **Teacher** — can only create student accounts and block/unblock students they manage. No access to teacher/admin account management.
+  - **Student** — standard login/session flow only.
+
+---
+
+## Roles & Permissions
+
+| Action                        | Admin | Teacher | Student |
+|-------------------------------|:-----:|:-------:|:-------:|
+| Create student accounts       | ✅    | ✅      | ❌      |
+| Block/unblock students        | ✅    | ✅      | ❌      |
+| Create/manage teacher accounts| ✅    | ❌      | ❌      |
+| Kick out / lock any session   | ✅    | ✅ (students only) | ❌ |
+| Login and start a session     | ✅    | ✅      | ✅      |
+
+---
+
+## Tech Stack
+
+- **Backend:** Node.js (`server/src/index.js`)
+- **Frontend:** React (or your framework) via `npm run dev`
+- **Session handling:** Persistent sessions (survive page refresh)
+
+> Fill in specifics here — e.g. Express, database used, auth method (JWT/sessions), WebSocket library if used for live kickout/lock.
+
+---
+
+##  Project Structure
 ```
-[Student's Windows Machine]                     [Teacher / Proctor Laptop]
-    ├── Python Desktop Agent (Win32 APIs)           └── Vite + React Dashboard UI
-    └── Secure Browser (Vite Exam Portal)                  ▲
-             │                    │                        │
-             │ (WS: /agent)       │ (WS: /agent)           │ (WS: /dashboard)
-             ▼                    ▼                        ▼
-      ┌────────────────────────────────────────────────────────┐
-      │             Node.js / Express Backend Server           │
-      │   ┌───────────────┐ ┌───────────────┐ ┌────────────┐   │
-      │   │  RulesEngine  │ │  RiskEngine   │ │  AIEngine  │   │
-      │   └───────────────┘ └───────────────┘ └────────────┘   │
-      │            SQLite-Like In-Memory MockDB (JSON)         │
-      └────────────────────────────────────────────────────────┘
-```
-
----
-
-## 2. Component Specifications
-
-### A. Windows Desktop Agent (`student_agent.py`)
-* **Role**: Runs locally on student computers to gather native system telemetry.
-* **Win32 Integration**: Uses Python `ctypes` to link to `kernel32.dll` and `user32.dll` to bypass shell limits and access system metrics directly.
-* **Key OS API Hooks**:
-  * `GetForegroundWindow` / `GetWindowTextW`: Extracts active application headers.
-  * `GetLastInputInfo`: Measures system-wide physical input inactivity.
-  * `GetLogicalDrives` / `GetDriveTypeW`: Detects hardware changes (e.g., removable USB mounts).
-  * `EnumWindows` / `IsWindowVisible`: Counts open graphical windows.
-* **Optimization**: Captures screen frames via `mss`, downsamples them to `800x600` via `Pillow`, compresses them to JPEG (30% quality), and encodes them as Base64. Average transmission payload is ~30KB per frame.
-
-### B. Node.js Backend Server (`server`)
-* **Role**: Coordinates sockets, authenticates accounts, runs rule models, logs telemetry, and computes risk profiles.
-* **Database**: Runs a custom database driver (`MockDB`) in `db.js`. It supports SQLite syntax internally, handles tables in-memory, and serializes updates to a single JSON file (`database.json`) using a **500ms debounce save timer** to prevent disk blocking.
-
-### C. Teacher Dashboard (`frontend`)
-* **Role**: Admin and proctor UI.
-* **Features**: Live Grid monitor, seating layout map (`SmartClassroomMap`), focus view, and user/rules management.
-
----
-
-## 3. Communication & Socket.io Protocol
-
-The application runs two Socket.io namespaces: `/agent` and `/dashboard`.
-
-### `/agent` Namespace (Agent ⟷ Server)
-* **`agent:register` (Client ➜ Server)**:
-  ```json
-  { "student_id": "STD-108", "hostname": "LAB-PC-01", "ip": "10.19.185.210", "mac": "00:50:56:C0:00:08" }
-  ```
-* **`agent:frame` (Client ➜ Server)**: Sends Base64 compressed JPEG frames + time logs.
-* **`agent:activity` (Client ➜ Server)**: Periodic telemetry update.
-  ```json
-  {
-    "mouse_delta": 45.2, "keystroke_count": 12, "idle_seconds": 0.2,
-    "processes": ["chrome.exe", "vscode.exe"], "active_window": "Exam Portal - Safe Browser",
-    "secondary_monitor": false, "monitor_count": 1, "window_count": 2, "usb_detected": false
-  }
-  ```
-* **`command:warn` (Server ➜ Client)**: Triggers a warnings modal inside the student portal.
-* **`command:lock_screen` / `command:unlock_screen` (Server ➜ Client)**: Restricts or allows browser interaction.
-* **`command:kick` (Server ➜ Client)**: Forces the Python agent process to terminate via `os._exit(0)`.
-
-### `/dashboard` Namespace (Server ⟷ Dashboard)
-* **`session:student_joined` (Server ➜ Dashboard)**: Broadcasts when a student connects.
-* **`frame:update` (Server ➜ Dashboard)**: Sends the Base64 frame of the student.
-* **`activity:update` (Server ➜ Dashboard)**: Emits live telemetry metrics for Sparklines.
-* **`flag:new` (Server ➜ Dashboard)**: Emits incident details when a rule is triggered.
-* **`risk:update` (Server ➜ Dashboard)**: Broadcasts updated risk score (0-100%).
-
----
-
-## 4. Detection Engines & Logic
-
-The project has three custom evaluation engines in `server/src/engine`:
-
-### A. Rules Engine (`rulesEngine.js`)
-Processes telemetry data using dynamic parameters:
-1. **Application Blacklist**: Cross-references process lists and focused window titles against custom keywords configured by the admin (e.g., Discord, WhatsApp, ChatGPT, YouTube).
-2. **Behavioral Statistical Anomaly Detection**:
-   * Tracks a rolling cache (last 30 telemetry ticks) of typing speed and mouse movements per student.
-   * Computes the mean ($\mu$) and standard deviation ($\sigma$) of this baseline.
-   * If a student's activity deviates by more than **$1.8\sigma$** from their baseline, it flags an anomaly (indicative of sudden bulk code copy-pastes).
-   * **Z-Score Formula**: $Z = \frac{|x - \mu|}{\sigma}$
-
-### B. Frozen Frame Detection (`frozenFrameEngine.js`)
-Detects if a student feeds pre-recorded loops or static frames:
-* **Signature Matching**: Generates a fast perceptual signature by hashing the string length + base64 prefix + base64 suffix of the frame.
-* **Correlation**: If the signature remains identical for **> 30 seconds** AND physical input (mouse/keyboard) remains idle for **> 15 seconds**, it flags a `Frozen Frame Detected` incident.
-
-### C. Risk Engine (`riskEngine.js`)
-* Calculates risk scores (0 to 100) using a **linear decay over 15 minutes**:
-  $$\text{Decay Factor} = \max\left(0, \frac{15 - \text{minutesAgo}}{15}\right)$$
-* This ensures that single accidental window switches don't permanently penalize the student's final integrity report.
-
----
-
-## 5. Security & Anti-Cheat Measures
-
-* **Binary Integrity Checksum**: The agent computes its own SHA-256 hash. If modified (e.g., bypassing monitoring hooks), the server logs a mismatch warning.
-* **JWT & SSO Lock**: The student must enter credentials and Session IDs in the desktop agent console. The backend yields a signed JWT token that autologins the student browser.
-* **Hardware Intercepts**: Removable USB devices and multiple screens are tracked using Windows DLL interfaces to prevent cheats on external drives.
-
----
-
-## 6. Project Directory Map
-
-```
-SIET Hack - Copy/
+SIET-HACK
+│
 ├── agent/
-│   ├── student_agent.py           # Core Win32 Python Agent Script
-│   ├── student_agent.spec         # PyInstaller compilation specification
-│   └── mock_students_simulator.py # Batch Simulator for spawning multiple bots
-├── server/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── db.js              # Mock SQLite JSON controller
-│   │   │   └── database.json      # Flat database store
-│   │   ├── engine/
-│   │   │   ├── rulesEngine.js     # Pattern & Z-Score anomaly processing
-│   │   │   ├── riskEngine.js      # Linear decay risk calculator
-│   │   │   ├── frozenFrameEngine.js# Screenshot loop detector
-│   │   │   └── aiEngine.js        # Dynamic natural language NLP explanations
-│   │   ├── routes/
-│   │   │   └── api.js             # Authentication, session and rule APIs
-│   │   ├── sockets/
-│   │   │   └── socketHandler.js   # Real-time WebSocket router
-│   │   └── index.js               # Application entry point
+│
 ├── frontend/
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── LiveGrid.jsx       # Grid rendering of screens
-│   │   │   ├── SmartClassroomMap.jsx# Classroom layout visualizer
-│   │   │   └── AdminPanel.jsx     # Rule editor & weight manager
-│   │   ├── pages/
-│   │   │   ├── StudentPortal.jsx  # Student safe exam space
-│   │   │   └── TeacherDashboard.jsx# Core Invigilator workspace
+│   └── public/
+│
+├── server/
+│   ├── src/
+│   └── index.js
+│
+└── README.md
 ```
+
+---
+---
+
+## ⚙️ Getting Started
+
+### 1. Start the Backend
+
+```bash
+cd server/src
+node index.js
+```
+
+### 2. Start the Frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+The frontend will be available at the local dev URL shown in the terminal (typically `http://localhost:5173` or `http://localhost:3000`).
+
+---
+
+## Login & Session Flow
+
+1. User navigates to the app in the browser and logs in with their credentials.
+2. User is required to **share their entire screen** — login only completes once full screen sharing is confirmed.
+3. On successful login, a persistent session is created.
+4. **Refreshing the page no longer creates a new session** — the existing session is restored seamlessly.
+5. If a user is **kicked out** or the screen is **locked** by a teacher/admin, they are required to authenticate a new session — this restriction now holds even after a page refresh.
+
+---
+
+## Roadmap / Planned Work
+
+- **Auto-launch `.exe` on student login:**
+  - Student logs in via browser.
+  - System detects the account is a student.
+  - A companion `.exe` executes automatically.
+  - The `.exe` prompts for a **session key**.
+  - Once the session key is entered, the student is logged in and session-linked.
+
+---
+
+## Known Fixed Bugs (Changelog)
+
+| Bug | Status |
+|-----|--------|
+| Refreshing created a new session instead of resuming | ✅ Fixed |
+| Kicked-out/locked users could bypass restriction via refresh | ✅ Fixed |
+| Users could log in without sharing full screen | ✅ Fixed |
+| Lock screen not properly re-locking | ✅ Fixed |
+| No role separation between teacher/admin privileges | ✅ Fixed |
+
+---
