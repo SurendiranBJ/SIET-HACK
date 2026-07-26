@@ -10,8 +10,8 @@ class RulesEngine {
   getCooldown(ruleType) {
     const cooldowns = {
       tab_switched: 5000,
-      idle_timeout: 10000,
-      blacklisted_app: 8000,
+      idle_timeout: 60000,
+      blacklisted_app: 5000,
       secondary_monitor: 10000,
       usb_detected: 8000,
       remote_access_tool: 8000,
@@ -19,7 +19,7 @@ class RulesEngine {
       window_spike: 5000,
       statistical_anomaly: 15000,
     };
-    return cooldowns[ruleType] || 8000;
+    return cooldowns[ruleType] || 5000;
   }
 
   shouldFire(studentId, ruleType) {
@@ -76,12 +76,19 @@ class RulesEngine {
         let parsed = null;
         if (r.threshold_value) {
           try {
-            parsed = typeof r.threshold_value === 'string' ? JSON.parse(r.threshold_value) : r.threshold_value;
-          } catch(e) {
-            if (typeof r.threshold_value === 'string' && r.threshold_value.includes(',')) {
-              parsed = r.threshold_value.split(',').map(s => s.trim());
+            const val = typeof r.threshold_value === 'string' ? JSON.parse(r.threshold_value) : r.threshold_value;
+            if (Array.isArray(val)) {
+              parsed = val;
+            } else if (typeof val === 'string') {
+              parsed = val.split(',').map(s => s.trim()).filter(Boolean);
             } else {
-              parsed = r.threshold_value;
+              parsed = [String(val)];
+            }
+          } catch(e) {
+            if (typeof r.threshold_value === 'string') {
+              parsed = r.threshold_value.split(',').map(s => s.trim()).filter(Boolean);
+            } else {
+              parsed = [String(r.threshold_value)];
             }
           }
         }
@@ -108,14 +115,17 @@ class RulesEngine {
 
     // 1. Blacklisted Apps & Banned Window Titles (ChatGPT, YouTube, WhatsApp, Discord, etc.)
     if (this.rules['blacklisted_app']) {
-      const defaultBlacklist = ["discord", "game", "cheat", "cheatengine", "whatsapp", "telegram", "chatgpt", "answers", "youtube"];
-      const blacklist = Array.isArray(this.rules['blacklisted_app'].threshold) 
-        ? this.rules['blacklisted_app'].threshold 
+      const defaultBlacklist = ["chatgpt", "openai", "gpt", "youtube", "whatsapp", "discord", "instagram", "facebook", "claude", "perplexity", "grok", "telegram", "game", "cheat", "cheatengine"];
+      const rawList = this.rules['blacklisted_app'].threshold;
+      const blacklist = Array.isArray(rawList) && rawList.length > 0
+        ? rawList 
+        : typeof rawList === 'string'
+        ? rawList.split(',').map(s => s.trim()).filter(Boolean)
         : defaultBlacklist;
 
       for (const app of blacklist) {
-        const kw = app.toLowerCase();
-        if (combinedTarget.includes(kw) && this.shouldFire(studentId, 'blacklisted_app')) {
+        const kw = String(app).toLowerCase().trim();
+        if (kw && combinedTarget.includes(kw) && this.shouldFire(studentId, 'blacklisted_app')) {
           flags.push({ 
             rule_type: 'blacklisted_app', 
             detail: `Unauthorized app/keyword detected: "${app}" (in active window/process)`, 

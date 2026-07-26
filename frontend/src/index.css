@@ -3,44 +3,49 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-dark-bg text-gray-200 font-sans antialiased;
+  html, body, #root {
+    background-color: #EEF4F0;
+    color: #0F172A;
+    font-family: 'Inter', sans-serif;
     margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
   }
 }
 
 @layer components {
   .glass-panel {
-    @apply bg-dark-panel border border-dark-border rounded-xl shadow-lg backdrop-blur-md;
+    @apply bg-white border border-emerald-300 rounded-xl shadow-lg backdrop-blur-md;
   }
   
   .glass-card {
-    @apply bg-dark-panel/80 border border-dark-border rounded-lg shadow-sm transition-all duration-300;
+    @apply bg-white/80 border border-emerald-200 rounded-lg shadow-sm transition-all duration-300;
   }
   
   .btn-primary {
-    @apply bg-primary text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-blue-600 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)];
+    @apply bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-emerald-500 hover:shadow-md;
   }
   
   .btn-danger {
-    @apply bg-danger text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-red-600 hover:shadow-[0_0_15px_rgba(239,68,68,0.4)];
+    @apply bg-rose-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-rose-500 hover:shadow-md;
   }
 
   .btn-secondary {
-    @apply bg-dark-hover text-gray-200 border border-dark-border px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-gray-700;
+    @apply bg-white text-slate-800 border border-emerald-300 px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-emerald-50;
   }
   
   .nav-item {
-    @apply px-4 py-2 text-gray-400 font-medium rounded-lg transition-colors cursor-pointer hover:text-gray-100 hover:bg-dark-hover;
+    @apply px-4 py-2 text-slate-600 font-medium rounded-lg transition-colors cursor-pointer hover:text-emerald-950 hover:bg-emerald-100/60;
   }
   
   .nav-item.active {
-    @apply text-primary bg-primary/10;
+    @apply text-white bg-emerald-600 font-bold;
   }
   
   .glow-danger {
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
-    border-color: #EF4444;
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.4);
+    border-color: #F43F5E;
   }
   
   .animate-pulse-fast {
@@ -48,18 +53,18 @@
   }
 }
 
-/* Custom Scrollbar */
+/* Custom Mint Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0F1115;
+  background: #EEF4F0;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2E323D;
+  background: #A7F3D0;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3B82F6;
+  background: #10B981;
 }

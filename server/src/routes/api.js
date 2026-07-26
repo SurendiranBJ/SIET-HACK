@@ -59,11 +59,17 @@ router.post('/teacher/sessions', async (req, res) => {
 
 router.post('/admin/users', async (req, res) => {
   const { db } = req;
-  const { username, password, role } = req.body;
+  const { username, password, role, creatorRole } = req.body;
   try {
     if (!username || !password || !role) return res.status(400).json({ error: 'Missing fields' });
     const existing = await db.get('SELECT * FROM users WHERE username = ?', [username]);
     if (existing) return res.status(400).json({ error: 'Username already exists' });
+
+    // Enforcement: Teachers can ONLY create Student accounts
+    if (creatorRole === 'teacher' && role !== 'student') {
+      return res.status(403).json({ error: 'Teachers are only authorized to create Student accounts.' });
+    }
+
     const hashedPassword = hashPassword(password);
     await db.run('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, hashedPassword, role]);
     res.json({ success: true });
@@ -72,6 +78,10 @@ router.post('/admin/users', async (req, res) => {
 
 router.delete('/admin/users/:id', async (req, res) => {
   const { db } = req;
+  const actorRole = req.query.actorRole || req.body?.actorRole;
+  if (actorRole === 'teacher') {
+    return res.status(403).json({ error: 'Permission Denied: Teachers can only block student accounts and cannot delete accounts.' });
+  }
   try {
     await db.run('DELETE FROM users WHERE id = ?', [req.params.id]);
     await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
@@ -82,11 +92,18 @@ router.delete('/admin/users/:id', async (req, res) => {
 
 router.patch('/admin/users/:id/block', async (req, res) => {
   const { db } = req;
-  const { blocked } = req.body;
+  const { blocked, actorRole } = req.body;
   try {
+    const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+    if (actorRole === 'teacher' && targetUser.role !== 'student') {
+      return res.status(403).json({ error: 'Permission Denied: Teachers are only authorized to block or unblock Student accounts.' });
+    }
+
     await db.run('UPDATE users SET blocked = ? WHERE id = ?', [blocked, req.params.id]);
     await db.run('INSERT INTO audit_log (actor, action, target, detail) VALUES (?, ?, ?, ?)',
-      ['admin', blocked ? 'block_user' : 'unblock_user', req.params.id, `User ${req.params.id} blocked status set to ${blocked}`]);
+      ['admin', blocked ? 'block_user' : 'unblock_user', req.params.id, `User ${req.params.id} (${targetUser.username}) blocked status set to ${blocked}`]);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -263,6 +280,19 @@ router.get('/students/:id/ai-explanation', async (req, res) => {
     const explanation = await aiEngine.generateSuspicionExplanation(student.id, flags, Math.min(100, Math.floor(totalRisk)));
     res.json(explanation);
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── SESSION KEY VERIFICATION ────────────────────────────────────────────────
+router.post('/session/verify-key', (req, res) => {
+  const { session_key } = req.body || {};
+  const activeKey = global.activeExamSessionKey || '';
+  const provided = String(session_key || '').trim().toUpperCase();
+
+  if (provided.length === 6 && activeKey && provided === activeKey) {
+    res.json({ valid: true, message: 'Session Key Verified Successfully' });
+  } else {
+    res.status(400).json({ valid: false, error: 'Invalid or expired 6-character Session Key. Ask your teacher for the current Session Key.' });
+  }
 });
 
 // ─── SESSION SUMMARY ─────────────────────────────────────────────────────────

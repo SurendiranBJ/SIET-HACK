@@ -147,17 +147,183 @@ def connect_error(data):
 def disconnect():
     print("[AGENT] Disconnected from server. Reconnecting...")
 
+import tkinter as tk
+import threading
+
+# ─── Screen Lock GUI Overlay ──────────────────────────────────────────────────
+class ScreenLockOverlay:
+    def __init__(self):
+        self.root = None
+        self.is_locked = False
+
+    def show(self):
+        if self.is_locked:
+            return
+        self.is_locked = True
+        
+        def _run_gui():
+            try:
+                self.root = tk.Tk()
+                self.root.title("EXAM SAFE - WORKSTATION LOCKED")
+                self.root.attributes("-fullscreen", True)
+                self.root.attributes("-topmost", True)
+                self.root.configure(bg="#450a0a")  # Dark Red
+
+                # Intercept window close, Esc, Alt+F4
+                self.root.protocol("WM_DELETE_WINDOW", lambda: None)
+                self.root.bind("<Escape>", lambda e: "break")
+                self.root.bind("<Alt-F4>", lambda e: "break")
+                self.root.bind("<Control-Alt-Delete>", lambda e: "break")
+
+                # Main container
+                container = tk.Frame(self.root, bg="#450a0a")
+                container.pack(expand=True)
+
+                icon_lbl = tk.Label(container, text="🔒", font=("Segoe UI", 72), bg="#450a0a", fg="#f87171")
+                icon_lbl.pack(pady=10)
+
+                title_lbl = tk.Label(container, text="WORKSTATION LOCKED BY FACULTY", font=("Segoe UI", 28, "bold"), bg="#450a0a", fg="#ffffff")
+                title_lbl.pack(pady=10)
+
+                sub_lbl = tk.Label(
+                    container,
+                    text="Your examination workspace has been locked remotely by proctoring faculty due to potential integrity violations.",
+                    font=("Segoe UI", 14),
+                    bg="#450a0a",
+                    fg="#fca5a5",
+                    wraplength=700,
+                    justify="center"
+                )
+                sub_lbl.pack(pady=10)
+
+                info_lbl = tk.Label(
+                    container,
+                    text=f"Candidate ID: {STUDENT_ID}  |  Host: {socket.gethostname()}\nPlease remain seated. Your instructor will inspect your workstation to unlock it.",
+                    font=("Segoe UI", 12),
+                    bg="#450a0a",
+                    fg="#94a3b8",
+                    justify="center"
+                )
+                info_lbl.pack(pady=20)
+
+                # Periodic re-focus loop to keep window top-most
+                def re_force():
+                    if self.is_locked and self.root:
+                        try:
+                            self.root.attributes("-topmost", True)
+                            self.root.focus_force()
+                            self.root.after(200, re_force)
+                        except Exception:
+                            pass
+                re_force()
+
+                self.root.mainloop()
+            except Exception as e:
+                print(f"[LOCK_GUI] Error displaying overlay: {e}")
+
+        t = threading.Thread(target=_run_gui, daemon=True)
+        t.start()
+
+    def hide(self):
+        self.is_locked = False
+        if self.root:
+            try:
+                self.root.after(0, self.root.destroy)
+            except Exception:
+                pass
+            self.root = None
+
+lock_overlay = ScreenLockOverlay()
+
+# ─── Warning GUI Overlay ──────────────────────────────────────────────────────
+class WarningOverlay:
+    def __init__(self):
+        pass
+
+    def show(self, message):
+        def _run_gui():
+            try:
+                root = tk.Tk()
+                root.title("EXAM SAFE - PROCTOR WARNING")
+                root.geometry("540x280")
+                root.attributes("-topmost", True)
+                root.configure(bg="#111827")
+
+                # Center window on screen
+                root.eval('tk::PlaceWindow . center')
+
+                container = tk.Frame(root, bg="#111827", padx=20, pady=20)
+                container.pack(fill="both", expand=True)
+
+                hdr = tk.Frame(container, bg="#111827")
+                hdr.pack(fill="x", pady=(0, 12))
+
+                icon_lbl = tk.Label(hdr, text="⚠️", font=("Segoe UI", 22), bg="#111827", fg="#fb923c")
+                icon_lbl.pack(side="left", padx=(0, 10))
+
+                tf = tk.Frame(hdr, bg="#111827")
+                tf.pack(side="left", fill="x")
+
+                sub = tk.Label(tf, text="MESSAGE FROM PROCTORING FACULTY", font=("Segoe UI", 8, "bold"), bg="#111827", fg="#fb923c")
+                sub.pack(anchor="w")
+
+                t_lbl = tk.Label(tf, text="Official Warning", font=("Segoe UI", 15, "bold"), bg="#111827", fg="#ffffff")
+                t_lbl.pack(anchor="w")
+
+                msg_lbl = tk.Label(
+                    container,
+                    text=message or "Your examination session is being monitored. Please maintain exam integrity.",
+                    font=("Segoe UI", 11),
+                    bg="#1f2937",
+                    fg="#f3f4f6",
+                    padx=14,
+                    pady=12,
+                    wraplength=470,
+                    justify="left"
+                )
+                msg_lbl.pack(fill="both", expand=True, pady=(0, 15))
+
+                btn = tk.Button(
+                    container,
+                    text="I Understand — Close Warning",
+                    font=("Segoe UI", 10, "bold"),
+                    bg="#ea580c",
+                    fg="#ffffff",
+                    activebackground="#c2410c",
+                    activeforeground="#ffffff",
+                    bd=0,
+                    padx=14,
+                    pady=7,
+                    cursor="hand2",
+                    command=root.destroy
+                )
+                btn.pack(fill="x")
+
+                root.focus_force()
+                root.mainloop()
+            except Exception as e:
+                print(f"[WARN_GUI] Error: {e}")
+
+        t = threading.Thread(target=_run_gui, daemon=True)
+        t.start()
+
+warning_overlay = WarningOverlay()
+
 @sio.on("command:warn", namespace="/agent")
 def on_warn(data):
-    print(f"\n[⚠️  TEACHER WARNING] {data.get('message', '')}\n")
+    msg = data.get('message', 'Your exam is being monitored. Please focus.') if isinstance(data, dict) else str(data)
+    print(f"\n[⚠️  TEACHER WARNING] {msg}\n")
+    warning_overlay.show(msg)
 
 @sio.on("command:lock_screen", namespace="/agent")
 def on_lock(data=None):
     print("[AGENT] 🔒 Exam session locked by teacher/proctor.")
+    lock_overlay.show()
 
 @sio.on("command:unlock_screen", namespace="/agent")
 def on_unlock(data=None):
     print("[AGENT] 🔓 Exam session unlocked by teacher/proctor.")
+    lock_overlay.hide()
 
 @sio.on("command:kick", namespace="/agent")
 def on_kick(data=None):

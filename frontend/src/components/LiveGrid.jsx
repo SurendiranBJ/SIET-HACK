@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertCircle, Eye, Wifi, WifiOff, TrendingUp, Filter, ArrowDownUp } from 'lucide-react';
+import { AlertCircle, Eye, Wifi, WifiOff, TrendingUp, Filter, ArrowDownUp, Lock, Unlock, MessageSquare } from 'lucide-react';
 import FocusView from './FocusView';
 import { getApiUrl } from '../config';
 
@@ -66,27 +66,27 @@ function SessionHealthBar({ students }) {
   if (total === 0) return null;
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 bg-[#1A1D24] border border-white/5 rounded-xl mb-4 flex-wrap">
-      <span className="text-xs text-white/40 font-bold uppercase tracking-wider">Session Health</span>
-      <div className="flex items-center gap-1">
-        <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-        <span className="text-xs font-bold text-red-400">{high} High Risk</span>
+    <div className="flex items-center gap-4 px-5 py-3.5 bg-white border border-emerald-300/80 rounded-2xl mb-5 flex-wrap shadow-sm text-slate-900">
+      <span className="text-xs text-emerald-950 font-black uppercase tracking-wider">Session Health</span>
+      <div className="flex items-center gap-1.5">
+        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shadow-xs" />
+        <span className="text-xs font-black text-rose-700">{high} High Risk</span>
       </div>
-      <div className="flex items-center gap-1">
-        <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />
-        <span className="text-xs font-bold text-yellow-400">{medium} Medium</span>
+      <div className="flex items-center gap-1.5">
+        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shadow-xs" />
+        <span className="text-xs font-black text-amber-700">{medium} Medium</span>
       </div>
-      <div className="flex items-center gap-1">
-        <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-        <span className="text-xs font-bold text-green-400">{normal} Clean</span>
+      <div className="flex items-center gap-1.5">
+        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shadow-xs" />
+        <span className="text-xs font-black text-emerald-700">{normal} Clean</span>
       </div>
-      <div className="ml-auto text-xs text-white/30 font-mono">{total} Students Total</div>
+      <div className="ml-auto text-xs text-emerald-950 font-extrabold font-mono">{total} Students Total</div>
       {/* Mini progress bar */}
       {total > 0 && (
-        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden flex">
-          <div className="bg-red-500 h-full transition-all" style={{ width: `${(high / total) * 100}%` }} />
-          <div className="bg-yellow-500 h-full transition-all" style={{ width: `${(medium / total) * 100}%` }} />
-          <div className="bg-green-500 h-full transition-all" style={{ width: `${(normal / total) * 100}%` }} />
+        <div className="w-full h-2 bg-emerald-100/70 rounded-full overflow-hidden flex border border-emerald-200/60">
+          <div className="bg-rose-500 h-full transition-all" style={{ width: `${(high / total) * 100}%` }} />
+          <div className="bg-amber-500 h-full transition-all" style={{ width: `${(medium / total) * 100}%` }} />
+          <div className="bg-emerald-500 h-full transition-all" style={{ width: `${(normal / total) * 100}%` }} />
         </div>
       )}
     </div>
@@ -116,9 +116,9 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
     : null;
 
   const getRiskColor = (score) => {
-    if (score >= 60) return 'border-red-500/70 shadow-[0_0_20px_rgba(239,68,68,0.25)]';
-    if (score >= 30) return 'border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.15)]';
-    return 'border-white/5';
+    if (score >= 60) return 'border-rose-500/80 shadow-[0_0_20px_rgba(244,63,94,0.15)]';
+    if (score >= 30) return 'border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.12)]';
+    return 'border-emerald-300/80';
   };
 
   const getRiskLabel = (score) => {
@@ -151,12 +151,12 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
 
       {/* Controls Row */}
       <div className="flex items-center justify-between mb-4 px-1 flex-wrap gap-3">
-        <span className="text-xs text-white/40 uppercase tracking-wider font-semibold">Live Classroom Monitoring Grid</span>
+        <span className="text-xs font-black text-emerald-950 uppercase tracking-wider">Live Classroom Monitoring Grid</span>
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* Filter */}
-          <div className="flex items-center gap-1 bg-[#1A1D24] border border-white/10 rounded-lg p-1">
-            <Filter className="w-3 h-3 text-white/30 ml-1" />
+          <div className="flex items-center gap-1 bg-white border border-emerald-300 rounded-xl p-1 shadow-sm">
+            <Filter className="w-3.5 h-3.5 text-emerald-700 ml-1.5" />
             {[
               { key: 'all', label: 'All' },
               { key: 'high', label: '🔴 High' },
@@ -166,10 +166,10 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
               <button
                 key={key}
                 onClick={() => setFilterMode(key)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-all ${
                   filterMode === key
-                    ? 'bg-blue-600/40 text-blue-300'
-                    : 'text-white/40 hover:text-white/70'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-900 hover:bg-emerald-50'
                 }`}
               >
                 {label}
@@ -178,8 +178,8 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
           </div>
 
           {/* Sort */}
-          <div className="flex items-center gap-1 bg-[#1A1D24] border border-white/10 rounded-lg p-1">
-            <ArrowDownUp className="w-3 h-3 text-white/30 ml-1" />
+          <div className="flex items-center gap-1 bg-white border border-emerald-300 rounded-xl p-1 shadow-sm">
+            <ArrowDownUp className="w-3.5 h-3.5 text-emerald-700 ml-1.5" />
             {[
               { key: 'risk', label: 'Risk' },
               { key: 'name', label: 'Name' },
@@ -188,10 +188,10 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
               <button
                 key={key}
                 onClick={() => setSortMode(key)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-all ${
                   sortMode === key
-                    ? 'bg-purple-600/40 text-purple-300'
-                    : 'text-white/40 hover:text-white/70'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-emerald-900 hover:bg-emerald-50'
                 }`}
               >
                 {label}
@@ -202,13 +202,13 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
           {/* Auto-Focus toggle */}
           <button
             onClick={() => setEnableAutoFocus(!enableAutoFocus)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-black border transition-all shadow-sm ${
               enableAutoFocus
-                ? 'bg-purple-600/20 border-purple-500/40 text-purple-300'
-                : 'bg-[#1A1D24] border-white/10 text-white/40 hover:text-white/70'
+                ? 'bg-emerald-600 border-emerald-600 text-white shadow-emerald-600/30'
+                : 'bg-white border-emerald-300 text-emerald-900 hover:bg-emerald-50'
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${enableAutoFocus ? 'bg-purple-400 animate-pulse' : 'bg-white/20'}`} />
+            <span className={`w-2 h-2 rounded-full ${enableAutoFocus ? 'bg-white animate-pulse' : 'bg-emerald-600'}`} />
             {enableAutoFocus ? 'Auto-Focus: ON' : 'Auto-Focus: OFF'}
           </button>
         </div>
@@ -227,17 +227,17 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
 
       {/* Student Grid */}
       {sorted.length === 0 ? (
-        <div className="h-64 flex flex-col items-center justify-center gap-3 text-white/30 bg-[#1A1D24] rounded-2xl border border-white/5">
-          <WifiOff className="w-10 h-10" />
-          <p className="text-lg">
+        <div className="h-64 flex flex-col items-center justify-center gap-3 text-emerald-900/60 bg-white rounded-3xl border border-emerald-300/80 shadow-sm">
+          <WifiOff className="w-10 h-10 text-emerald-700" />
+          <p className="text-lg font-bold text-emerald-950">
             {students.length === 0 ? 'Waiting for students to connect…' : 'No students match the current filter'}
           </p>
           {students.length === 0 && (
-            <p className="text-sm">Students should open the portal and share their screen</p>
+            <p className="text-sm font-semibold text-emerald-700">Students should open the portal and share their screen</p>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
           {sorted.map(student => {
             const risk = student.risk_score || 0;
             const isHigh = risk >= 50;
@@ -248,81 +248,129 @@ export default function LiveGrid({ students, flags, onLockScreen, onUnlockScreen
               <div
                 key={student.student_id}
                 onClick={() => setFocusedStudentId(student.student_id)}
-                className={`bg-[#1A1D24] border rounded-2xl p-3 cursor-pointer group transition-all hover:scale-[1.02] relative overflow-hidden ${getRiskColor(risk)}`}
+                className={`bg-white border border-emerald-300/80 rounded-2xl p-3.5 cursor-pointer group transition-all duration-300 hover:scale-[1.02] hover:border-emerald-500 hover:shadow-xl shadow-md relative overflow-hidden ${getRiskColor(risk)}`}
               >
                 {/* Risk bar at top */}
-                <div className={`absolute top-0 left-0 right-0 h-0.5 ${isHigh ? 'bg-red-500' : isMed ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                <div className={`absolute top-0 left-0 right-0 h-1.5 ${isHigh ? 'bg-gradient-to-r from-rose-600 to-red-500' : isMed ? 'bg-gradient-to-r from-amber-500 to-yellow-400' : 'bg-gradient-to-r from-emerald-500 to-teal-400'}`} />
 
                 {/* Header */}
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <p className="font-semibold text-sm text-white truncate">{student.name || student.student_id}</p>
-                    <p className="text-xs text-white/30">{student.student_id}</p>
+                <div className="flex justify-between items-center mb-3 gap-2">
+                  <div className="truncate">
+                    <p className="font-black text-sm text-emerald-950 truncate flex items-center gap-1.5 tracking-tight">
+                      {student.name || student.student_id}
+                      {student.is_locked && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-300 flex items-center gap-1 uppercase tracking-wider animate-pulse">
+                          <Lock className="w-2.5 h-2.5" /> LOCKED
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] font-mono font-bold text-emerald-800/80 tracking-wide">{student.student_id}</p>
                   </div>
-                  <div
-                    aria-label={`Risk score: ${risk} percent, status: ${getRiskLabel(risk)}`}
-                    className={`px-2 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
-                      isHigh ? 'bg-red-500/20 text-red-400' :
-                      isMed ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-green-500/20 text-green-400'
-                    }`}
-                  >
-                    <span>{getRiskLabel(risk)}</span>
-                    <span>• {risk}%</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const msg = window.prompt(`Send Warning Message to ${student.name || student.student_id}:`, "Your exam is being monitored. Please maintain exam focus.");
+                        if (msg && msg.trim() && socket) {
+                          socket.emit('teacher:warn_student', { student_id: student.student_id, message: msg.trim() });
+                        }
+                      }}
+                      title="Send Warning Message"
+                      className="p-1.5 rounded-xl text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 hover:scale-110 transition-all shadow-xs"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-amber-800" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (student.is_locked) {
+                          if (onUnlockScreen) onUnlockScreen(student.student_id);
+                        } else {
+                          if (onLockScreen) onLockScreen(student.student_id);
+                        }
+                      }}
+                      title={student.is_locked ? "Unlock Screen" : "Lock Screen"}
+                      className={`p-1.5 rounded-xl text-xs font-bold transition-all shadow-xs hover:scale-110 ${
+                        student.is_locked
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                          : 'bg-rose-100 text-rose-700 border border-rose-300 hover:bg-rose-200'
+                      }`}
+                    >
+                      {student.is_locked ? <Unlock className="w-3.5 h-3.5 text-emerald-800" /> : <Lock className="w-3.5 h-3.5 text-rose-700" />}
+                    </button>
+                    <div
+                      aria-label={`Risk score: ${risk} percent, status: ${getRiskLabel(risk)}`}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 border shadow-xs ${
+                        isHigh ? 'bg-rose-100 border-rose-300 text-rose-800' :
+                        isMed ? 'bg-amber-100 border-amber-300 text-amber-800' :
+                        'bg-emerald-100 border-emerald-300 text-emerald-900'
+                      }`}
+                    >
+                      <span>{getRiskLabel(risk)}</span>
+                      <span>• {risk}%</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Screen thumbnail */}
-                <div className="aspect-video bg-black rounded-xl overflow-hidden relative mb-2 border border-white/5">
+                <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden relative mb-2.5 border border-emerald-200 shadow-inner">
                   {student.latestFrame ? (
                     <img
                       src={`data:image/jpeg;base64,${student.latestFrame}`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                       alt=""
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-white/20 gap-2">
-                      <Wifi className="w-8 h-8 animate-pulse" />
-                      <span className="text-xs">Connecting…</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center text-white/40 gap-2">
+                      <Wifi className="w-7 h-7 animate-pulse text-emerald-400" />
+                      <span className="text-xs font-semibold tracking-wide">Connecting Stream…</span>
                     </div>
                   )}
 
                   {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 rounded-lg text-sm font-medium">
-                      <Eye className="w-4 h-4" /> Focus View
+                  <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl text-xs font-black text-white uppercase tracking-wider shadow-lg shadow-emerald-600/40 border border-emerald-400/60 transform scale-95 group-hover:scale-105 transition-all">
+                      <Eye className="w-4 h-4 text-white stroke-[2.5]" /> Inspect Candidate
                     </span>
                   </div>
 
+                  {/* Locked Overlay Badge */}
+                  {student.is_locked && (
+                    <div className="absolute inset-0 bg-rose-950/85 backdrop-blur-[3px] flex flex-col items-center justify-center gap-1 text-rose-300 font-black text-xs select-none pointer-events-none border border-rose-500/40">
+                      <Lock className="w-7 h-7 animate-pulse text-rose-300" />
+                      <span className="tracking-widest">WORKSTATION LOCKED</span>
+                    </div>
+                  )}
+
                   {/* Flag pulse indicator */}
-                  {recentlyFlagged && (
-                    <div className="absolute top-2 right-2 flex items-center gap-1 bg-red-500/90 px-2 py-0.5 rounded-full text-xs font-bold animate-pulse">
+                  {!student.is_locked && recentlyFlagged && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1 bg-rose-600 text-white px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg animate-pulse">
                       <AlertCircle className="w-3 h-3" /> FLAG
                     </div>
                   )}
                 </div>
 
                 {/* Sparkline Trend */}
-                <div className="mb-2 px-1 flex items-center gap-2">
-                  <TrendingUp className="w-3 h-3 text-white/20 shrink-0" />
+                <div className="mb-2.5 px-1 flex items-center gap-2 bg-emerald-50/80 rounded-lg p-1 border border-emerald-200/80">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                   <Sparkline studentId={student.student_id} />
                 </div>
 
                 {/* Activity bar */}
                 <div className="flex gap-2">
-                  <div className="flex-1 bg-[#0F1115] rounded-lg px-2 py-1.5 text-center">
-                    <p className="text-xs text-white/30">Activity</p>
-                    <p className="text-sm font-semibold text-blue-400">{student.activity?.activity_score || 0}%</p>
+                  <div className="flex-1 bg-emerald-50/80 rounded-xl px-2 py-1.5 text-center border border-emerald-200/80">
+                    <p className="text-[10px] uppercase font-black text-emerald-900 tracking-wider">Activity</p>
+                    <p className="text-xs font-black text-emerald-800">{student.activity?.activity_score || 0}%</p>
                   </div>
-                  <div className="flex-1 bg-[#0F1115] rounded-lg px-2 py-1.5 text-center">
-                    <p className="text-xs text-white/30">Idle</p>
-                    <p className={`text-sm font-semibold ${(student.activity?.idle_seconds || 0) > 30 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  <div className="flex-1 bg-emerald-50/80 rounded-xl px-2 py-1.5 text-center border border-emerald-200/80">
+                    <p className="text-[10px] uppercase font-black text-emerald-900 tracking-wider">Idle</p>
+                    <p className={`text-xs font-black ${(student.activity?.idle_seconds || 0) > 30 ? 'text-amber-700' : 'text-emerald-700'}`}>
                       {Math.round(student.activity?.idle_seconds || 0)}s
                     </p>
                   </div>
-                  <div className="flex-1 bg-[#0F1115] rounded-lg px-2 py-1.5 text-center">
-                    <p className="text-xs text-white/30">Flags</p>
-                    <p className={`text-sm font-semibold ${(student.flags?.length || 0) > 0 ? 'text-red-400' : 'text-white/50'}`}>
+                  <div className="flex-1 bg-emerald-50/80 rounded-xl px-2 py-1.5 text-center border border-emerald-200/80">
+                    <p className="text-[10px] uppercase font-black text-emerald-900 tracking-wider">Flags</p>
+                    <p className={`text-xs font-black ${(student.flags?.length || 0) > 0 ? 'text-rose-700' : 'text-emerald-900/60'}`}>
                       {student.flags?.length || 0}
                     </p>
                   </div>

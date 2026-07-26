@@ -8,9 +8,9 @@ export default function SmartClassroomMap({ students, flags }) {
   const cells = Array.from({ length: rows * COLS });
 
   const getRiskBg = (risk) => {
-    if (risk >= 60) return 'bg-red-500/30 border-red-500/60 text-red-300';
-    if (risk >= 30) return 'bg-yellow-500/20 border-yellow-500/40 text-yellow-300';
-    return 'bg-green-500/10 border-green-500/30 text-green-300';
+    if (risk >= 60) return 'bg-rose-50 border-rose-400 text-rose-950 shadow-sm';
+    if (risk >= 30) return 'bg-amber-50 border-amber-400 text-amber-950 shadow-sm';
+    return 'bg-white border-emerald-300 text-emerald-950 shadow-sm hover:border-emerald-500';
   };
 
   const getRiskTag = (risk) => {
@@ -20,7 +20,7 @@ export default function SmartClassroomMap({ students, flags }) {
   };
 
   return (
-    <div>
+    <div className="text-slate-900">
       {focused && (
         <FocusView
           student={focused}
@@ -28,30 +28,30 @@ export default function SmartClassroomMap({ students, flags }) {
         />
       )}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-bold text-white">Smart Classroom Seating Map</h2>
-        <div className="flex items-center gap-4 text-xs text-white/40">
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-500/30 border border-green-500/60 inline-block" /> Safe</span>
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-yellow-500/20 border border-yellow-500/40 inline-block" /> Moderate</span>
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-500/30 border border-red-500/60 inline-block" /> High Risk</span>
+        <h2 className="text-xl font-black text-emerald-950">Smart Classroom Seating Map</h2>
+        <div className="flex items-center gap-4 text-xs text-slate-600 font-bold">
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-white border border-emerald-300 inline-block shadow-xs" /> Safe</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 border border-amber-300 inline-block shadow-xs" /> Moderate</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-rose-100 border border-rose-300 inline-block shadow-xs" /> High Risk</span>
         </div>
       </div>
 
       {/* Faculty desk */}
       <div className="flex justify-center mb-8">
-        <div className="px-8 py-3 bg-blue-500/20 border border-blue-500/40 text-blue-300 rounded-xl text-sm font-semibold">
+        <div className="px-8 py-3 bg-white border border-emerald-300 text-emerald-950 rounded-2xl text-sm font-black shadow-sm flex items-center gap-2">
           📋 Faculty Desk
         </div>
       </div>
 
       <div
-        className="grid gap-3 max-w-4xl mx-auto"
+        className="grid gap-3.5 max-w-4xl mx-auto"
         style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}
       >
         {cells.map((_, i) => {
           const student = students[i];
           if (!student) {
             return (
-              <div key={i} className="aspect-square rounded-xl border border-dashed border-white/5 bg-white/[0.02] flex items-center justify-center text-white/10 text-xs">
+              <div key={i} className="aspect-square rounded-2xl border-2 border-dashed border-emerald-300/60 bg-white/50 flex items-center justify-center text-slate-400 text-xs font-bold">
                 Empty
               </div>
             );
@@ -63,13 +63,13 @@ export default function SmartClassroomMap({ students, flags }) {
               onClick={() => setFocused(student)}
               tabIndex={0}
               aria-label={`Student ${student.student_id}, risk score ${risk} percent, status ${getRiskTag(risk)}`}
-              className={`aspect-square rounded-xl border-2 cursor-pointer flex flex-col items-center justify-center gap-1 transition-all hover:scale-105 p-2 ${getRiskBg(risk)}`}
+              className={`aspect-square rounded-2xl border-2 cursor-pointer flex flex-col items-center justify-center gap-1 transition-all hover:scale-105 p-2.5 ${getRiskBg(risk)}`}
             >
-              <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{getRiskTag(risk)}</div>
-              <div className="text-lg font-bold">{risk}%</div>
-              <div className="text-xs text-center truncate w-full opacity-80">{student.student_id}</div>
+              <div className="text-[10px] font-black uppercase tracking-wider opacity-90">{getRiskTag(risk)}</div>
+              <div className="text-lg font-black font-mono">{risk}%</div>
+              <div className="text-xs text-center font-bold font-mono truncate w-full">{student.student_id}</div>
               {(student.flags?.length || 0) > 0 && (
-                <div className="text-xs bg-red-500/30 px-1.5 py-0.5 rounded-full font-semibold">
+                <div className="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full font-black">
                   {student.flags.length}⚠
                 </div>
               )}

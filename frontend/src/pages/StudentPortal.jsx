@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { Monitor, AlertTriangle, CheckCircle, FileEdit, Clock, Activity, Zap, Usb, ScreenShare, Cpu, Lock } from 'lucide-react';
-import { getSocketUrl } from '../config';
+import { Shield, Monitor, AlertTriangle, CheckCircle, FileEdit, Clock, Activity, Zap, Usb, ScreenShare, Cpu, Lock, LogOut, Key } from 'lucide-react';
+import { getSocketUrl, getApiUrl } from '../config';
 
 const StudentPortal = () => {
   const navigate = useNavigate();
@@ -12,6 +12,11 @@ const StudentPortal = () => {
   const [telemetry, setTelemetry] = useState({ keystrokes: 0, idle: 0, tabSwitches: 0, activeWindow: 'Exam Portal' });
   const [examText, setExamText] = useState('');
   const [isLocked, setIsLocked] = useState(false);
+  const [isKicked, setIsKicked] = useState(false);
+  const [sessionKeyInput, setSessionKeyInput] = useState('');
+  const [sessionKeyError, setSessionKeyError] = useState('');
+  const [isKeyVerified, setIsKeyVerified] = useState(false);
+  const [verifyingKey, setVerifyingKey] = useState(false);
   const [teacherWarning, setTeacherWarning] = useState(null);
   const [workspaceTab, setWorkspaceTab] = useState('answer');
   const [browserTab, setBrowserTab] = useState(() => {
@@ -26,6 +31,7 @@ const StudentPortal = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
+  const sessionKeyRef = useRef('');
 
   // Telemetry refs
   const keystrokesRef = useRef(0);
@@ -48,7 +54,38 @@ const StudentPortal = () => {
   useEffect(() => {
     const userStr = localStorage.getItem('siet_user');
     if (!userStr) { navigate('/login'); return; }
-    setUser(JSON.parse(userStr));
+    const userObj = JSON.parse(userStr);
+    setUser(userObj);
+
+    const isKickedState = sessionStorage.getItem(`exam_kicked_${userObj.username}`) === 'true';
+    if (isKickedState) {
+      setIsKicked(true);
+    }
+
+    // Check if active verified Session Key exists in sessionStorage
+    const savedKey = sessionStorage.getItem(`siet_session_key_${userObj.username}`);
+    if (savedKey && !isKickedState) {
+      const formattedKey = savedKey.trim().toUpperCase();
+      setSessionKeyInput(formattedKey);
+      sessionKeyRef.current = formattedKey;
+
+      // Verify stored key against server silently on mount
+      fetch(getApiUrl('/session/verify-key'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_key: formattedKey })
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.valid) {
+          setIsKeyVerified(true);
+        } else {
+          sessionStorage.removeItem(`siet_session_key_${userObj.username}`);
+          setIsKeyVerified(false);
+        }
+      })
+      .catch(() => {});
+    }
 
     const handleKeyDown = () => {
       keystrokesRef.current += 1;
@@ -65,10 +102,10 @@ const StudentPortal = () => {
 
     const handleVisibilityChange = () => {
       const elapsed = Date.now() - sharingStartTimeRef.current;
-      if (document.hidden && elapsed > 4000) {
+      if (document.hidden && elapsed > 1000) {
         tabSwitchedRef.current = true;
         tabSwitchCountRef.current += 1;
-        activeWindowRef.current = 'Other Browser Tab';
+        activeWindowRef.current = 'External Browser Tab (Unfocused)';
       } else {
         activeWindowRef.current = 'Exam Portal - Exam Safe';
       }
@@ -80,6 +117,16 @@ const StudentPortal = () => {
         clipboardSizeRef.current = text.length;
       }
     };
+
+    const handleUsbConnect = (e) => {
+      usbDetectedRef.current = true;
+      const deviceName = e?.device?.productName || 'USB Removable Hardware Drive';
+      extraProcessesRef.current = [...extraProcessesRef.current, deviceName];
+    };
+
+    if (navigator.usb) {
+      navigator.usb.addEventListener('connect', handleUsbConnect);
+    }
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousemove', handleMouseMove);
@@ -97,49 +144,93 @@ const StudentPortal = () => {
     };
   }, [navigate]);
 
-  const triggerSignal = (signalType, val) => {
-    if (signalType === 'chatgpt') {
-      activeWindowRef.current = 'ChatGPT - OpenAI Answers Tab';
-      setExamText(prev => prev + '\n[Pasted from ChatGPT: Detailed Answer Solution...]');
-      clipboardSizeRef.current = 250;
-    } else if (signalType === 'anydesk') {
-      extraProcessesRef.current = ['chrome.exe', 'anydesk.exe', 'teamviewer.exe'];
-      activeWindowRef.current = 'AnyDesk Remote Desktop Control';
-    } else if (signalType === 'usb') {
-      usbDetectedRef.current = true;
-    } else if (signalType === 'monitor') {
-      secondaryMonitorRef.current = true;
-    } else if (signalType === 'spike') {
-      windowCountRef.current = 8;
-    } else if (signalType === 'paste') {
-      clipboardSizeRef.current = 450;
-      setExamText(prev => prev + '\n[Pasted External Content: 450 characters copied from external browser/notes...]');
-      activeWindowRef.current = 'Exam Portal - External Paste Detected';
-    } else if (signalType === 'idle') {
-      lastActivityRef.current = Date.now() - 35000; // Force 35s idle
-    } else if (signalType === 'normal') {
-      activeWindowRef.current = 'Exam Portal - Exam Safe';
-      extraProcessesRef.current = [];
-      usbDetectedRef.current = false;
-      secondaryMonitorRef.current = false;
-      windowCountRef.current = 1;
-      lastActivityRef.current = Date.now();
+  // STEP 1: Verify Session Key First BEFORE opening screen share dialog
+  const handleVerifySessionKey = async (e) => {
+    if (e) e.preventDefault();
+    const formattedKey = sessionKeyInput.trim().toUpperCase();
+    if (formattedKey.length !== 6 || !/^[A-Z0-9]{6}$/.test(formattedKey)) {
+      setSessionKeyError('Session Key must be exactly 6 characters (letters & numbers only).');
+      setIsKeyVerified(false);
+      return;
+    }
+
+    setVerifyingKey(true);
+    setSessionKeyError('');
+
+    try {
+      const res = await fetch(getApiUrl('/session/verify-key'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_key: formattedKey })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.valid) {
+        setIsKeyVerified(true);
+        sessionKeyRef.current = formattedKey;
+        setSessionKeyError('');
+        if (user?.username) {
+          sessionStorage.setItem(`siet_session_key_${user.username}`, formattedKey);
+          sessionStorage.removeItem(`exam_kicked_${user.username}`);
+        }
+        setIsKicked(false);
+      } else {
+        setIsKeyVerified(false);
+        setSessionKeyError(data.error || 'Invalid or expired 6-character Session Key. Ask your teacher for the current key.');
+        if (user?.username) {
+          sessionStorage.removeItem(`siet_session_key_${user.username}`);
+        }
+      }
+    } catch (err) {
+      setSessionKeyError('Server connection error. Please try again.');
+      setIsKeyVerified(false);
+    } finally {
+      setVerifyingKey(false);
     }
   };
 
+  // STEP 2: Only called AFTER Session Key is verified + Enforces ENTIRE SCREEN ONLY
   const startExamSession = async () => {
     try {
       setError(null);
+
+      if (!isKeyVerified || sessionKeyRef.current.length !== 6) {
+        setSessionKeyError('Please verify a valid 6-character Session Key first.');
+        return;
+      }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         setError('INSECURE_CONTEXT');
         return;
       }
 
+      // Request Entire Screen (displaySurface: 'monitor')
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false
+        video: {
+          displaySurface: 'monitor',
+          cursor: 'always',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false,
+        selfBrowserSurface: 'exclude',
+        surfaceSwitching: 'exclude',
+        systemAudio: 'exclude'
       });
+
+      // Strict Enforcement: Verify candidate actually selected ENTIRE SCREEN ('monitor')
+      const videoTrack = stream.getVideoTracks()[0];
+      const settings = videoTrack && videoTrack.getSettings ? videoTrack.getSettings() : {};
+      const surfaceType = settings.displaySurface;
+
+      if (surfaceType && surfaceType !== 'monitor') {
+        // Reject tab or window selection!
+        try { stream.getTracks().forEach(t => t.stop()); } catch(e) {}
+        setSessionKeyError('❌ PROCTORING VIOLATION: You selected a single tab or window. You MUST select "Entire screen" to enter the exam portal. Please click Share Screen again and choose "Entire screen".');
+        setIsSharing(false);
+        isSharingRef.current = false;
+        return;
+      }
 
       streamRef.current = stream;
       sharingStartTimeRef.current = Date.now();
@@ -174,7 +265,6 @@ const StudentPortal = () => {
       });
       socketRef.current = socket;
 
-      // Listen for remote screen lock & unlock commands from teacher
       socket.on('command:lock_screen', () => {
         setIsLocked(true);
       });
@@ -184,13 +274,46 @@ const StudentPortal = () => {
       socket.on('command:warn', (data) => {
         setTeacherWarning(data?.message || 'Warning from your teacher.');
       });
+      socket.on('command:kick', (data) => {
+        setIsSharing(false);
+        isSharingRef.current = false;
+        setIsKicked(true);
+        setIsKeyVerified(false);
+        if (data?.reason === 'INVALID_SESSION_KEY') {
+          setSessionKeyError('Invalid or expired 6-character Session Key. Ask your teacher for the current Session Key.');
+        } else {
+          setSessionKeyError('You were removed from the exam session by the proctor. Enter the new 6-character Session Key to re-join.');
+        }
+        if (user?.username) {
+          sessionStorage.removeItem(`siet_session_key_${user.username}`);
+          sessionStorage.setItem(`exam_kicked_${user.username}`, 'true');
+        }
+        if (streamRef.current) {
+          try { streamRef.current.getTracks().forEach(t => t.stop()); } catch(e) {}
+        }
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (socketRef.current) {
+          try { socketRef.current.disconnect(); } catch(e) {}
+        }
+      });
+      socket.on('command:unban', (data) => {
+        const targetId = String(data?.student_id || '').trim().toLowerCase();
+        const currentId = String(user?.username || '').trim().toLowerCase();
+        if (!targetId || targetId === currentId) {
+          sessionStorage.removeItem(`exam_kicked_${user?.username}`);
+          setIsKicked(false);
+          setSessionKeyError('');
+        }
+      });
 
       const startLoop = () => {
+        const clientHostIp = window.location.hostname || '127.0.0.1';
         socket.emit('agent:register', {
           student_id: user.username,
           hostname: `Browser-${user.username}`,
-          ip: 'Web-Client',
-          mac: '00:00:00:00:00:00'
+          ip: clientHostIp === 'localhost' ? '127.0.0.1' : clientHostIp,
+          mac: '00:00:00:00:00:00',
+          session_key: sessionKeyRef.current.trim().toUpperCase()
         });
 
         if (intervalRef.current) clearInterval(intervalRef.current);
@@ -201,7 +324,6 @@ const StudentPortal = () => {
             return;
           }
 
-          // Capture Frame
           const v = videoRef.current;
           const canvas = canvasRef.current;
           if (v && canvas && v.readyState >= 2 && v.videoWidth > 0) {
@@ -214,7 +336,6 @@ const StudentPortal = () => {
             socket.emit('agent:frame', { jpeg_base64: clean, timestamp: Date.now() / 1000 });
           }
 
-          // Emit Full Activity & Rule Telemetry
           const idleSeconds = Math.round((Date.now() - lastActivityRef.current) / 1000);
           const keystrokes = keystrokesRef.current;
           const mouseDelta = Math.round(mouseDeltaRef.current);
@@ -247,7 +368,6 @@ const StudentPortal = () => {
 
           socket.emit('agent:ping');
 
-          // Reset temporary accumulators
           keystrokesRef.current = 0;
           mouseDeltaRef.current = 0;
           tabSwitchedRef.current = false;
@@ -268,27 +388,27 @@ const StudentPortal = () => {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-[#0F1115] text-white p-6 relative">
+    <div className="min-h-screen flex flex-col bg-[#EEF4F0] text-slate-900 font-sans selection:bg-emerald-500/30 overflow-x-hidden p-4 sm:p-6 relative">
 
       {/* Teacher Warning Overlay */}
       {teacherWarning && (
-        <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-[#1A1D24] border-2 border-orange-500/60 rounded-2xl p-8 max-w-lg w-full shadow-[0_0_60px_rgba(249,115,22,0.3)] animate-bounce-once">
+        <div className="fixed inset-0 z-[9999] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-[#FAFCFA] border-2 border-amber-400 rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-bounce-once text-slate-900">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
-                <AlertTriangle className="w-7 h-7 text-orange-400" />
+              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center border border-amber-300">
+                <AlertTriangle className="w-7 h-7 text-amber-700" />
               </div>
               <div>
-                <p className="text-xs text-orange-400 font-bold uppercase tracking-wider mb-0.5">⚠️ Message from Proctoring Faculty</p>
-                <h3 className="text-lg font-bold text-white">Official Warning</h3>
+                <p className="text-xs text-amber-800 font-black uppercase tracking-wider mb-0.5">⚠️ Message from Proctoring Faculty</p>
+                <h3 className="text-lg font-black text-slate-950">Official Warning</h3>
               </div>
             </div>
-            <p className="text-white/90 text-base leading-relaxed bg-orange-500/5 border border-orange-500/20 rounded-xl p-4 mb-6">
+            <p className="text-slate-800 text-sm leading-relaxed bg-amber-50/80 border border-amber-200 rounded-2xl p-4 mb-6 font-semibold">
               {teacherWarning}
             </p>
             <button
               onClick={() => setTeacherWarning(null)}
-              className="w-full py-3 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl transition-all text-sm"
+              className="w-full py-3.5 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-2xl transition-all text-xs uppercase tracking-wider shadow-lg shadow-amber-600/30"
             >
               I Understand — Close Warning
             </button>
@@ -298,16 +418,18 @@ const StudentPortal = () => {
 
       {/* Screen Lock Overlay */}
       {isLocked && (
-        <div className="fixed inset-0 z-50 bg-red-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in select-none">
-          <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-6 border border-red-500/30">
-            <Lock className="w-10 h-10 text-red-400 animate-pulse" />
-          </div>
-          <h2 className="text-3xl font-bold text-red-400 mb-2">Workstation Locked by Faculty</h2>
-          <p className="text-white/70 max-w-md mb-6 leading-relaxed text-sm">
-            Your examination workspace has been locked remotely by the proctoring faculty due to potential integrity violations.
-          </p>
-          <div className="px-6 py-3.5 bg-red-900/50 border border-red-500/40 rounded-xl text-red-200 font-semibold text-sm flex items-center justify-center gap-2 shadow-xl">
-            🔒 WORKSTATION LOCKED — Faculty inspection required to unlock
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in select-none">
+          <div className="bg-[#FAFCFA] border-2 border-rose-500 rounded-3xl p-8 max-w-lg w-full shadow-2xl text-slate-900 flex flex-col items-center">
+            <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mb-6 border-2 border-rose-300 shadow-md">
+              <Lock className="w-10 h-10 text-rose-700 animate-pulse" />
+            </div>
+            <h2 className="text-2xl font-black text-rose-950 mb-2">Workstation Locked by Faculty</h2>
+            <p className="text-slate-600 max-w-md mb-6 leading-relaxed text-sm font-medium">
+              Your examination workspace has been locked remotely by the proctoring faculty due to potential integrity violations.
+            </p>
+            <div className="px-6 py-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 font-black text-xs uppercase tracking-wider shadow-xs">
+              🔒 WORKSTATION LOCKED — Faculty inspection required to unlock
+            </div>
           </div>
         </div>
       )}
@@ -318,184 +440,163 @@ const StudentPortal = () => {
         <canvas ref={canvasRef} width={800} height={600} />
       </div>
 
-      <div className="max-w-5xl mx-auto">
-        <header className="flex justify-between items-center mb-8 border-b border-white/10 pb-6">
-          <div>
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-              Exam Safe Student Portal
-            </h1>
-            <p className="text-white/40 mt-1">Logged in as <strong className="text-white">{user.username}</strong></p>
+      <div className="max-w-5xl mx-auto w-full">
+        {/* Responsive Header (Light Green & Half-White Theme) */}
+        <header className="bg-[#FAFCFA]/95 backdrop-blur-xl border border-emerald-300/80 px-6 py-4 rounded-3xl shadow-md mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/25 shrink-0 border border-emerald-300/30 text-white">
+              <Shield className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black text-emerald-950 tracking-tight">
+                Exam Safe Student Portal
+              </h1>
+              <p className="text-xs text-slate-600 font-bold">
+                Logged in as <strong className="text-emerald-900 font-black">{user.username}</strong>
+              </p>
+            </div>
           </div>
-          <button
-            onClick={() => { localStorage.removeItem('siet_user'); navigate('/login'); }}
-            className="px-4 py-2 border border-white/10 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors text-sm"
-          >
-            Logout
-          </button>
+
+          <div className="flex items-center gap-3">
+            <span className="px-3.5 py-1 bg-emerald-100/80 text-emerald-950 rounded-full font-black text-xs border border-emerald-300 shadow-xs hidden sm:inline">
+              Candidate: {user.username}
+            </span>
+            <button
+              onClick={() => { localStorage.removeItem('siet_user'); navigate('/login'); }}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-2xl border border-slate-200 shadow-xs transition-all text-xs uppercase tracking-wider"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Logout
+            </button>
+          </div>
         </header>
 
         {!isSharing ? (
-          <div className="bg-[#1A1D24] border border-white/10 rounded-2xl p-10 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
-            <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Monitor className="w-10 h-10 text-blue-400" />
+          <div className="bg-[#FAFCFA] border-2 border-emerald-300/80 rounded-3xl p-8 sm:p-10 text-center shadow-xl relative overflow-hidden text-slate-900 max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100/80 text-emerald-800 rounded-full text-xs font-extrabold uppercase tracking-wider mb-4 border border-emerald-300/60">
+              ✨ Examination Workstation
             </div>
-            <h2 className="text-2xl font-semibold mb-4">Start Your Exam Session</h2>
-            <p className="text-white/60 mb-4 max-w-lg mx-auto leading-relaxed">
-              You will be prompted to share your <strong>entire screen</strong>. Select <em>Entire Screen</em> (not a window or tab) 
-              for best proctoring accuracy.
-            </p>
-            <p className="text-yellow-400/80 text-sm mb-8">
-              ⚠️ Make sure to select <strong>Entire Screen</strong> in the share dialog.
-            </p>
+
+            <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-emerald-300 shadow-sm">
+              <Monitor className="w-8 h-8 text-emerald-800" />
+            </div>
+            <h2 className="text-2xl font-black text-emerald-950 mb-3">Start Your Exam Session</h2>
+
+            {sessionKeyError && (
+              <div className="mb-6 max-w-lg mx-auto p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-950 text-xs font-extrabold flex items-start gap-2.5 text-left leading-relaxed shadow-xs">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
+                <span>{sessionKeyError}</span>
+              </div>
+            )}
 
             {error === 'INSECURE_CONTEXT' ? (
-              <div className="mb-6 text-left bg-orange-500/10 border border-orange-500/30 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center gap-2 text-orange-400 font-semibold">
-                  <AlertTriangle className="w-5 h-5 shrink-0" />
+              <div className="mb-6 text-left bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center gap-2 text-amber-900 font-black text-xs uppercase tracking-wider">
+                  <AlertTriangle className="w-5 h-5 shrink-0 text-amber-700" />
                   Screen sharing requires a secure connection
                 </div>
                 
-                <p className="text-white/60 text-sm leading-relaxed">
-                  Your browser blocks screen capture over plain HTTP on non-localhost addresses. Select your browser below for step-by-step instructions to enable it:
+                <p className="text-slate-700 text-xs leading-relaxed font-medium">
+                  Your browser blocks screen capture over plain HTTP on non-localhost addresses. Select your browser below for instructions:
                 </p>
 
-                {/* Browser Tab Selector */}
-                <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/5 mb-4">
+                <div className="flex gap-2 p-1 bg-white rounded-xl border border-slate-200 mb-4">
                   <button
                     onClick={() => setBrowserTab('chrome')}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-                      browserTab === 'chrome'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                      browserTab === 'chrome' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    Google Chrome
+                    Chrome
                   </button>
                   <button
                     onClick={() => setBrowserTab('edge')}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-                      browserTab === 'edge'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                      browserTab === 'edge' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    Microsoft Edge
+                    Edge
                   </button>
                   <button
                     onClick={() => setBrowserTab('firefox')}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-                      browserTab === 'firefox'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                      browserTab === 'firefox' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    Mozilla Firefox
+                    Firefox
                   </button>
                 </div>
-
-                {browserTab === 'chrome' && (
-                  <div className="space-y-3 animate-in fade-in duration-200">
-                    <ol className="space-y-3 text-sm">
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span>
-                        <span className="text-white/70">Open a new tab and go to: <code className="bg-white/10 px-2 py-0.5 rounded text-blue-300 text-xs select-all">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</span>
-                        <span className="text-white/70">In the text box, paste: <code className="bg-white/10 px-2 py-0.5 rounded text-blue-300 text-xs select-all">http://{window.location.hostname}:{window.location.port}</code></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span>
-                        <span className="text-white/70">Set the flag to <strong className="text-white">Enabled</strong> → Click <strong className="text-white">Relaunch</strong></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">4</span>
-                        <span className="text-white/70">Come back to this page, refresh, and click <strong className="text-white">Share Screen</strong> again</span>
-                      </li>
-                    </ol>
-                  </div>
-                )}
-
-                {browserTab === 'edge' && (
-                  <div className="space-y-3 animate-in fade-in duration-200">
-                    <ol className="space-y-3 text-sm">
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span>
-                        <span className="text-white/70">Open a new tab and go to: <code className="bg-white/10 px-2 py-0.5 rounded text-blue-300 text-xs select-all">edge://flags/#unsafely-treat-insecure-origin-as-secure</code></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</span>
-                        <span className="text-white/70">In the text box, paste: <code className="bg-white/10 px-2 py-0.5 rounded text-blue-300 text-xs select-all">http://{window.location.hostname}:{window.location.port}</code></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span>
-                        <span className="text-white/70">Set the flag to <strong className="text-white">Enabled</strong> → Click <strong className="text-white">Relaunch</strong></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">4</span>
-                        <span className="text-white/70">Come back to this page, refresh, and click <strong className="text-white">Share Screen</strong> again</span>
-                      </li>
-                    </ol>
-                  </div>
-                )}
-
-                {browserTab === 'firefox' && (
-                  <div className="space-y-3 animate-in fade-in duration-200">
-                    <ol className="space-y-3 text-sm">
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</span>
-                        <span className="text-white/70">Open a new tab and go to: <code className="bg-white/10 px-2 py-0.5 rounded text-blue-300 text-xs select-all">about:config</code></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</span>
-                        <span className="text-white/70">Accept the warning by clicking <strong className="text-white">"Accept the Risk and Continue"</strong></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</span>
-                        <span className="text-white/70">Search for: <code className="bg-white/10 px-2 py-0.5 rounded text-blue-300 text-xs select-all">media.getdisplaymedia.require_secure_context</code></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">4</span>
-                        <span className="text-white/70">Double-click or toggle the option to set it to <strong className="text-green-400">false</strong></span>
-                      </li>
-                      <li className="flex gap-3">
-                        <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">5</span>
-                        <span className="text-white/70">Come back to this page, refresh, and click <strong className="text-white">Share Screen</strong> again</span>
-                      </li>
-                    </ol>
-                  </div>
-                )}
-
-                <div className="pt-2 border-t border-orange-500/20 flex flex-col gap-1">
-                  <p className="text-xs text-white/30">💡 Alternatively, if you're on the same PC as the server, use <code className="text-blue-300">http://localhost:{window.location.port}</code> instead.</p>
-                  <p className="text-xs text-white/30">🔒 For production environments, configure HTTPS on the server to make the context secure natively.</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                {error}
               </div>
             ) : null}
 
-            <button
-              onClick={startExamSession}
-              className="px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)]"
-            >
-              Share Screen &amp; Begin Exam
-            </button>
+            {/* STEP 1: Enter & Verify 6-Character Session Key */}
+            <div className="max-w-md mx-auto mb-6 text-left bg-white border border-emerald-200/80 rounded-2xl p-6 shadow-sm">
+              <label className="block text-xs font-black text-emerald-950 uppercase tracking-wider mb-2 text-center flex items-center justify-center gap-1.5">
+                <Key className="w-4 h-4 text-emerald-700" /> 1. Enter 6-Character Session Key
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={sessionKeyInput}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    setSessionKeyInput(val);
+                    sessionKeyRef.current = val;
+                    setIsKeyVerified(false);
+                    if (sessionKeyError) setSessionKeyError('');
+                  }}
+                  placeholder="e.g. K9X2M7"
+                  className="flex-1 bg-slate-50 border-2 border-emerald-300/80 focus:border-emerald-600 focus:outline-none text-center font-mono text-xl font-black tracking-widest text-emerald-950 py-2.5 rounded-xl uppercase transition-all shadow-inner"
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifySessionKey}
+                  disabled={sessionKeyInput.length !== 6 || verifyingKey}
+                  className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xs rounded-xl disabled:opacity-40 transition-all uppercase tracking-wider shrink-0 shadow-md shadow-emerald-700/20"
+                >
+                  {verifyingKey ? 'Checking...' : isKeyVerified ? '✓ Verified' : 'Verify Key'}
+                </button>
+              </div>
+
+              {isKeyVerified ? (
+                <div className="mt-3 p-3 bg-emerald-100/90 border border-emerald-300 rounded-xl text-emerald-950 text-xs font-black flex items-center justify-center gap-2 shadow-xs">
+                  <CheckCircle className="w-4 h-4 text-emerald-700" />
+                  <span>Session Key Verified & Active!</span>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 font-bold mt-2 text-center">
+                  Ask your exam proctor for the current 6-digit session key.
+                </p>
+              )}
+            </div>
+
+            {/* STEP 2: Share ENTIRE SCREEN ONLY Button */}
+            <div className="space-y-3">
+              <button
+                onClick={startExamSession}
+                disabled={!isKeyVerified}
+                className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black transition-all shadow-xl shadow-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider text-xs sm:text-sm hover:scale-[1.02] active:scale-[0.98]"
+              >
+                2. Share Entire Screen &amp; Begin Exam
+              </button>
+              {!isKeyVerified ? (
+                <p className="text-xs text-amber-800 font-black">
+                  🔒 Step 1 (Session Key Verification) required to enable Screen Share.
+                </p>
+              ) : (
+                <p className="text-xs text-emerald-800 font-black">
+                  ⚠️ Mandatory: Select <strong>"Entire screen"</strong> in the browser window picker. Single tabs/windows will be rejected.
+                </p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
             {/* Exam Workspace */}
             <div className="md:col-span-2 space-y-6">
-              {/* Browser Examination Tabs */}
-              <div className="bg-[#1A1D24] border border-white/10 rounded-2xl p-6 flex flex-col min-h-[460px]">
-                
-                {/* Tab Header Bar */}
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+              <div className="bg-[#FAFCFA] border-2 border-emerald-300/80 rounded-3xl p-6 shadow-xl flex flex-col min-h-[480px] text-slate-900">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-emerald-200/80">
                   <div className="flex items-center gap-2 overflow-x-auto">
                     {[
                       { id: 'answer', label: '📝 Answer Workspace', allowed: true },
@@ -515,49 +616,48 @@ const StudentPortal = () => {
                             activeWindowRef.current = `Exam Portal - ${t.label}`;
                           }
                         }}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border shrink-0 ${
+                        className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all border shrink-0 ${
                           workspaceTab === t.id
                             ? t.allowed 
-                              ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/30'
-                              : 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/30 animate-pulse'
-                            : 'bg-[#0F1115] border-white/5 text-white/50 hover:text-white hover:bg-white/5'
+                              ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/30'
+                              : 'bg-rose-600 border-rose-500 text-white shadow-md shadow-rose-600/30 animate-pulse'
+                            : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
                       >
                         {t.label}
                       </button>
                     ))}
                   </div>
-                  <span className="text-xs text-white/40 font-mono hidden sm:inline">{telemetry.activeWindow}</span>
+                  <span className="text-xs text-slate-500 font-mono font-bold hidden sm:inline">{telemetry.activeWindow}</span>
                 </div>
 
-                {/* Tab Content */}
-                <div className="flex-1">
+                <div className="flex-1 flex flex-col">
                   {workspaceTab === 'answer' && (
                     <textarea
                       value={examText}
                       disabled={isLocked}
                       onChange={(e) => setExamText(e.target.value)}
-                      className="w-full h-full min-h-[300px] bg-[#0F1115] border border-white/10 rounded-xl p-4 text-white/80 focus:outline-none focus:border-blue-500/50 resize-none leading-relaxed font-sans text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="w-full flex-1 min-h-[320px] bg-white border-2 border-emerald-200/80 rounded-2xl p-4 text-slate-900 focus:outline-none focus:border-emerald-500 resize-none leading-relaxed font-sans text-sm font-medium shadow-inner disabled:opacity-40 disabled:cursor-not-allowed"
                       placeholder={isLocked ? "Workstation locked by faculty..." : "Type your exam answers here..."}
                     />
                   )}
 
                   {workspaceTab === 'question' && (
-                    <div className="bg-[#0F1115] border border-white/10 rounded-xl p-6 text-sm space-y-4 min-h-[300px]">
-                      <h4 className="font-bold text-blue-400 text-base">Section A: Systems & Security (10 Marks)</h4>
-                      <p className="text-white/80 leading-relaxed font-medium">
+                    <div className="bg-white border-2 border-emerald-200/80 rounded-2xl p-6 text-sm space-y-4 min-h-[320px] shadow-sm">
+                      <h4 className="font-black text-emerald-950 text-base">Section A: Systems & Security (10 Marks)</h4>
+                      <p className="text-slate-700 leading-relaxed font-bold">
                         Q1. Explain the architectural design of real-time monitoring systems in distributed client-server applications. How do WebSocket framing protocols reduce latency?
                       </p>
-                      <p className="text-white/80 leading-relaxed font-medium pt-2">
+                      <p className="text-slate-700 leading-relaxed font-bold pt-2">
                         Q2. Describe the mechanisms used to detect unauthorized process execution and clipboard size anomalies without capturing sensitive user keystrokes.
                       </p>
                     </div>
                   )}
 
                   {workspaceTab === 'docs' && (
-                    <div className="bg-[#0F1115] border border-white/10 rounded-xl p-6 text-sm space-y-3 min-h-[300px]">
-                      <h4 className="font-bold text-green-400">Approved Exam Reference Material</h4>
-                      <ul className="space-y-2 text-white/70 text-xs">
+                    <div className="bg-white border-2 border-emerald-200/80 rounded-2xl p-6 text-sm space-y-3 min-h-[320px] shadow-sm">
+                      <h4 className="font-black text-emerald-900">Approved Exam Reference Material</h4>
+                      <ul className="space-y-2 text-slate-700 text-xs font-bold">
                         <li>• System Call Reference: `GetForegroundWindow()`, `GetLastInputInfo()`</li>
                         <li>• Network Protocols: WebSockets RFC 6455, HTTP/2 Server Push</li>
                         <li>• Data Compression: JPEG quality scaling (30% quality frame capture)</li>
@@ -566,13 +666,13 @@ const StudentPortal = () => {
                   )}
 
                   {workspaceTab === 'external' && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 text-center text-sm space-y-3 min-h-[300px] flex flex-col items-center justify-center">
-                      <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center text-red-400 font-bold text-xl mb-1">
+                    <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-6 text-center text-sm space-y-3 min-h-[320px] flex flex-col items-center justify-center shadow-sm">
+                      <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-700 font-bold text-xl mb-1 border border-rose-300">
                         ⚠️
                       </div>
-                      <h4 className="font-bold text-red-400 text-base">Unauthorized External Tab Simulated</h4>
-                      <p className="text-white/70 max-w-md text-xs leading-relaxed">
-                        Navigating away to an unauthorized tab triggers an immediate <strong className="text-red-300">Tab Switch Violation Flag</strong> on the faculty dashboard and increases your risk score.
+                      <h4 className="font-black text-rose-950 text-base">Unauthorized External Tab Simulated</h4>
+                      <p className="text-rose-900 max-w-md text-xs leading-relaxed font-bold">
+                        Navigating away to an unauthorized tab triggers an immediate <strong className="text-rose-950 font-black">Tab Switch Violation Flag</strong> on the faculty dashboard and increases your risk score.
                       </p>
                     </div>
                   )}
@@ -582,50 +682,32 @@ const StudentPortal = () => {
 
             {/* Status Panel */}
             <div className="space-y-4">
-              <div className="bg-[#1A1D24] border border-green-500/30 rounded-2xl p-5 shadow-[0_0_20px_rgba(34,197,94,0.08)]">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                  <h3 className="font-semibold text-green-400">Proctoring Active</h3>
+              <div className="bg-[#FAFCFA] border-2 border-emerald-300/80 rounded-3xl p-5 shadow-xl">
+                <div className="flex items-center gap-3 mb-2 p-3 bg-emerald-100/80 rounded-2xl border border-emerald-300">
+                  <div className="w-3 h-3 bg-emerald-600 rounded-full animate-pulse"></div>
+                  <h3 className="font-black text-emerald-950 text-sm">Proctoring Active</h3>
                 </div>
-                <p className="text-white/50 text-sm">Screen & OS activity streaming live to faculty dashboard.</p>
+                <p className="text-slate-600 text-xs font-bold mt-2">Screen & OS activity streaming live to faculty dashboard.</p>
               </div>
 
-              <div className="bg-[#1A1D24] border border-white/10 rounded-2xl p-5">
-                <h3 className="font-semibold mb-4 text-white/80 text-sm uppercase tracking-wider">Live Telemetry</h3>
+              <div className="bg-white border-2 border-emerald-200/80 rounded-3xl p-5 shadow-sm">
+                <h3 className="font-black mb-4 text-emerald-950 text-xs uppercase tracking-wider">Live Telemetry</h3>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/40 flex items-center gap-2"><Activity className="w-4 h-4" /> Keystrokes</span>
-                    <span className="text-blue-400 font-mono">{telemetry.keystrokes}</span>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-slate-600 flex items-center gap-2"><Activity className="w-4 h-4 text-emerald-700" /> Keystrokes</span>
+                    <span className="text-emerald-800 font-mono font-black">{telemetry.keystrokes}</span>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/40 flex items-center gap-2"><Clock className="w-4 h-4" /> Idle Time</span>
-                    <span className={`font-mono ${telemetry.idle > 30 ? 'text-yellow-400' : 'text-green-400'}`}>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-slate-600 flex items-center gap-2"><Clock className="w-4 h-4 text-teal-700" /> Idle Time</span>
+                    <span className={`font-mono font-black ${telemetry.idle > 30 ? 'text-amber-700' : 'text-emerald-700'}`}>
                       {telemetry.idle}s
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/40 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Tab Switches</span>
-                    <span className={`font-mono ${telemetry.tabSwitches > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-slate-600 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-700" /> Tab Switches</span>
+                    <span className={`font-mono font-black ${telemetry.tabSwitches > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                       {telemetry.tabSwitches}
                     </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-[#1A1D24] border border-white/10 rounded-2xl p-5">
-                <h3 className="font-semibold mb-4 text-white/80 text-sm uppercase tracking-wider font-mono text-xs">Monitored Signals</h3>
-                <div className="space-y-2 text-xs text-white/60">
-                  <div className="flex items-center justify-between">
-                    <span>Active Window:</span>
-                    <span className="text-blue-400 truncate max-w-[120px] font-mono">{telemetry.activeWindow}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Clipboard Paste:</span>
-                    <span className="text-green-400 font-mono">Size Only</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Keystrokes:</span>
-                    <span className="text-green-400 font-mono">Count Only</span>
                   </div>
                 </div>
               </div>
@@ -635,21 +717,55 @@ const StudentPortal = () => {
         )}
       </div>
 
-      {/* Impenetrable Proctor Lock Overlay */}
-      {isLocked && (
-        <div className="fixed inset-0 z-[99999] bg-[#080B10]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none">
-          <div className="w-20 h-20 bg-red-500/20 border-2 border-red-500 rounded-3xl flex items-center justify-center mb-6 animate-bounce shadow-[0_0_50px_rgba(239,68,68,0.3)]">
-            <Lock className="w-10 h-10 text-red-500" />
-          </div>
-          <h1 className="text-3xl font-extrabold text-white mb-2">EXAM SESSION LOCKED</h1>
-          <p className="text-red-400 text-lg font-medium mb-4">Your exam interface has been locked by the proctor.</p>
-          <div className="bg-[#14171F] border border-white/10 rounded-2xl p-6 max-w-md text-sm text-white/60 space-y-2 mb-6">
-            <p>• All exam inputs and navigation are currently disabled.</p>
-            <p>• Please wait for your instructor/proctor to inspect your session and unlock your screen.</p>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-white/40 bg-white/5 px-4 py-2 rounded-full border border-white/5">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span>Student Candidate: {user?.username} · Locked State Active</span>
+      {/* Impenetrable Proctor Kickout / 6-Character Session Key Verification Overlay */}
+      {isKicked && (
+        <div className="fixed inset-0 z-[999999] bg-slate-950/80 backdrop-blur-lg flex flex-col items-center justify-center p-6 text-center select-none">
+          <div className="bg-[#FAFCFA] border-2 border-rose-400 rounded-3xl p-8 max-w-md w-full shadow-2xl text-slate-900 flex flex-col items-center">
+            <div className="w-20 h-20 bg-rose-100 border-2 border-rose-300 rounded-3xl flex items-center justify-center mb-6 animate-pulse shadow-md">
+              <Lock className="w-10 h-10 text-rose-700" />
+            </div>
+            <h1 className="text-2xl font-black text-rose-950 mb-2">SESSION KEY REQUIRED</h1>
+            <p className="text-rose-900 text-xs font-bold mb-6 max-w-md">
+              {sessionKeyError || 'Your session key has expired or been revoked by proctoring faculty.'}
+            </p>
+
+            <form onSubmit={handleVerifySessionKey} className="bg-white border-2 border-emerald-200/80 rounded-2xl p-6 w-full text-left space-y-4 mb-6 shadow-sm">
+              <div>
+                <label className="block text-xs font-black text-emerald-950 uppercase tracking-wider mb-2 text-center">
+                  Enter 6-Character Session Key (A-Z, 0-9)
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={sessionKeyInput}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    setSessionKeyInput(val);
+                    sessionKeyRef.current = val;
+                    setIsKeyVerified(false);
+                    if (sessionKeyError) setSessionKeyError('');
+                  }}
+                  placeholder="e.g. K9X2M7"
+                  className="w-full bg-slate-50 border-2 border-emerald-300 focus:border-emerald-600 focus:outline-none text-center font-mono text-2xl font-black tracking-widest text-emerald-950 py-3 rounded-xl uppercase transition-all shadow-inner"
+                />
+                <p className="text-[11px] text-slate-500 font-bold mt-2 text-center">
+                  • Exactly 6 digits (letters & numbers only). Ask your instructor for the current Session Key.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={sessionKeyInput.length !== 6 || verifyingKey}
+                className="w-full py-3 bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-700/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-wider"
+              >
+                {verifyingKey ? 'Verifying Key...' : 'Verify Session Key'}
+              </button>
+            </form>
+
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-200">
+              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>Candidate: {user?.username} · Verify 6-Character Key to Proceed</span>
+            </div>
           </div>
         </div>
       )}

@@ -17,7 +17,7 @@ class MockDB {
       agent_heartbeats: {},  // { student_id: { last_seen, status } }
       session_summaries: [], // AI end-of-session summaries
       rules: [
-        { id: 1, rule_type: 'blacklisted_app', enabled: 1, threshold_value: JSON.stringify(["discord","game","cheat","cheatengine","whatsapp","telegram"]), weight: 30 },
+        { id: 1, rule_type: 'blacklisted_app', enabled: 1, threshold_value: JSON.stringify(["chatgpt","openai","youtube","whatsapp","discord","instagram","facebook","claude","perplexity","grok","telegram","game","cheat","cheatengine"]), weight: 30 },
         { id: 2, rule_type: 'idle_timeout', enabled: 1, threshold_value: JSON.stringify({ seconds: 60 }), weight: 10 },
         { id: 3, rule_type: 'secondary_monitor', enabled: 1, threshold_value: null, weight: 20 },
         { id: 4, rule_type: 'usb_detected', enabled: 1, threshold_value: null, weight: 15 },
@@ -40,6 +40,10 @@ class MockDB {
         this.data = { ...this.data, ...loaded };
         // Always restore runtime-only field
         this.data.agent_heartbeats = loaded.agent_heartbeats || {};
+        // Prune old historical test flags to keep session data clean (max 200 recent flags)
+        if (Array.isArray(this.data.flags) && this.data.flags.length > 200) {
+          this.data.flags = this.data.flags.slice(-200);
+        }
       }
     } catch(e) {
       console.error("Error loading DB file:", e);

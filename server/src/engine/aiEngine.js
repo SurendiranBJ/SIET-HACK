@@ -48,25 +48,52 @@ class AIEngine {
 
   async generateSessionSummary(students, allFlags) {
     const total = students.length;
-    const flaggedStudents = [...new Set(allFlags.map(f => f.student_id))];
-    const criticalCount = allFlags.filter(f => f.severity === 'high' && f.risk_score_delta >= 30).length;
+    // Map internal student database IDs (e.g. 14) and student_ids (e.g. "108") to display roll numbers
+    const studentMap = {};
+    students.forEach(s => {
+      const displayName = s.student_id || s.name || `Student ${s.id}`;
+      studentMap[String(s.id)] = displayName;
+      studentMap[String(s.student_id)] = displayName;
+    });
+
+    // Filter flags that belong to existing registered students in the system
+    const validFlags = (allFlags || []).filter(f => {
+      const sid = String(f.student_id);
+      return studentMap[sid] !== undefined;
+    });
+
+    const flaggedStudentIds = new Set(validFlags.map(f => String(f.student_id)));
+    const flaggedCount = Math.min(total, flaggedStudentIds.size);
+    const cleanCount = Math.max(0, total - flaggedCount);
+
     const ruleBreakdown = {};
-    allFlags.forEach(f => { ruleBreakdown[f.rule_type] = (ruleBreakdown[f.rule_type] || 0) + 1; });
-    const topRule = Object.entries(ruleBreakdown).sort((a, b) => b[1] - a[1])[0];
+    validFlags.forEach(f => { 
+      const rKey = f.rule_type || 'unknown_rule';
+      ruleBreakdown[rKey] = (ruleBreakdown[rKey] || 0) + 1; 
+    });
+    
+    const sortedRules = Object.entries(ruleBreakdown).sort((a, b) => b[1] - a[1]);
+    const topRule = sortedRules[0];
+    const topRuleFormatted = topRule ? topRule[0].replace(/_/g, ' ') : 'None';
+
+    const flaggedStudentNames = Array.from(flaggedStudentIds).map(id => studentMap[id] || `Candidate ${id}`);
+    const criticalCount = validFlags.filter(f => f.severity === 'high' || (f.risk_score_delta && f.risk_score_delta >= 20)).length;
 
     return {
       generated_at: new Date().toISOString(),
       total_students: total,
-      flagged_students: flaggedStudents.length,
-      clean_students: total - flaggedStudents.length,
-      total_flags: allFlags.length,
+      flagged_students: flaggedCount,
+      clean_students: cleanCount,
+      total_flags: validFlags.length,
       critical_flags: criticalCount,
-      most_common_violation: topRule ? topRule[0] : 'None',
+      most_common_violation: topRuleFormatted,
       rule_breakdown: ruleBreakdown,
-      summary: `Session completed with ${total} students monitored. ${flaggedStudents.length} student(s) triggered behavioral flags. ${criticalCount} critical violation(s) detected. Most common issue: ${topRule ? topRule[0].replace(/_/g, ' ') : 'none'}.`,
-      recommendation: flaggedStudents.length === 0 
-        ? 'Session appears clean. No action required.'
-        : `Review flagged students: ${flaggedStudents.slice(0, 5).join(', ')}${flaggedStudents.length > 5 ? ' and more' : ''}.`
+      summary: total === 0
+        ? 'No active students were registered in this exam session.'
+        : `Exam session summary: ${total} candidate(s) monitored. ${flaggedCount} candidate(s) flagged for integrity violations, ${cleanCount} candidate(s) remained clean. Total of ${validFlags.length} violation flag(s) logged. Primary issue: ${topRuleFormatted}.`,
+      recommendation: flaggedCount === 0
+        ? 'Session integrity verified clean. No proctoring intervention required.'
+        : `Faculty Review Advised: Inspect flagged candidate(s) ${flaggedStudentNames.slice(0, 5).join(', ')}${flaggedStudentNames.length > 5 ? ' and others' : ''}.`
     };
   }
 }

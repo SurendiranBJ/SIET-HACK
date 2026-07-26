@@ -63,7 +63,7 @@ const Signup = () => {
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
               Create Account
             </h1>
-            <p className="text-white/40 mt-2 text-sm">Join the SIET Smart Classroom platform</p>
+            <p className="text-white/40 mt-2 text-sm">Join the Smart Proctoring Workspace platform</p>
           </div>
 
           {error && (
